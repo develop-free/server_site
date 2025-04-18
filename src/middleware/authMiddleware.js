@@ -1,31 +1,18 @@
-const { verifyToken } = require('../utils/jwt');
+const jwt = require('jsonwebtoken');
 const config = require('../config/config');
 
 exports.authenticate = (req, res, next) => {
-  const authHeader = req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Требуется авторизация' });
-  } try {
-    const decoded = verifyToken(token, config.jwt.secret);
-    
-    // Отправляем заголовок, если токен скоро истечет
-    if (decoded.isAboutToExpire) {
-      res.set('X-Token-Expiring-Soon', 'true');
-    }
-    
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (!token) throw new Error();
+
+    const decoded = jwt.verify(token, config.jwt.secret);
     req.user = decoded;
     next();
   } catch (error) {
-    res.status(403).json({ error: 'Неверный или истекший токен' });
+    res.status(401).json({
+      success: false,
+      message: 'Требуется авторизация'
+    });
   }
-};
-
-
-exports.roleMiddleware = (allowedRoles) => {
-  return (req, res, next) => {
-    if (!req.user || !allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ error: 'Недостаточно прав' });
-    }
-    next();
-  };
 };
