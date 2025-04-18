@@ -21,7 +21,17 @@ const generateTokens = (user) => {
 
 const verifyToken = (token, secret) => {
   try {
-    return jwt.verify(token, secret);
+    const decoded = jwt.verify(token, secret);
+    
+    // Добавляем проверку "почти истекшего" токена
+    const now = Math.floor(Date.now() / 1000);
+    const expiresIn = decoded.exp - now;
+    
+    if (expiresIn < 60 * 5) { // Если осталось меньше 5 минут
+      decoded.isAboutToExpire = true;
+    }
+    
+    return decoded;
   } catch (error) {
     throw new Error('Invalid token');
   }
