@@ -18,7 +18,6 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-
 createUploadsFolder();
 
 mongoose.connect(config.mongoURI)
