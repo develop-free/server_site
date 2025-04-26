@@ -42,6 +42,11 @@ const StudentSchema = new mongoose.Schema({
   avatar: {
     type: String
   },
+  password: {
+    type: String,
+    required: true,
+    select: false // чтобы не возвращать пароль в запросах
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -51,6 +56,14 @@ const StudentSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+StudentSchema.pre('save', async function(next) {
+  if (this.isModified('password')) {
+    this.password = await bcrypt.hash(this.password, 10);
+  }
+  next();
+});
+
 
 // Автоматическое обновление updatedAt
 StudentSchema.pre('save', function(next) {

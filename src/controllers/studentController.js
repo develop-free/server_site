@@ -223,7 +223,6 @@ const getDepartments = async (req, res) => {
   }
 };
 
-// Получение групп по отделению
 const getGroupsByDepartment = async (req, res) => {
   try {
     const { departmentId } = req.params;
@@ -249,11 +248,46 @@ const getGroupsByDepartment = async (req, res) => {
   }
 };
 
+const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const student = await Student.findOne({ user: req.user.id });
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Студент не найден'
+      });
+    }
+
+    // Здесь должна быть логика проверки текущего пароля и обновления на новый
+    // Например, если вы используете bcrypt:
+    const isMatch = await bcrypt.compare(currentPassword, student.password);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: 'Текущий пароль неверен' });
+    }
+    student.password = await bcrypt.hash(newPassword, 10);
+    await student.save();
+
+    res.json({
+      success: true,
+      message: 'Пароль успешно изменен'
+    });
+  } catch (error) {
+    console.error('Ошибка при изменении пароля:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ошибка сервера при изменении пароля'
+    });
+  }
+};
+
 // Экспорт методов
 module.exports = {
   getProfile,
   updateProfile,
   updateAvatar,
   getDepartments,
-  getGroupsByDepartment
+  getGroupsByDepartment,
+  changePassword
 };

@@ -4,15 +4,13 @@ const studentController = require('../controllers/studentController');
 const authMiddleware = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 
-// Маршруты для студента
+// Маршруты для профиля студента
 router.get('/profile', authMiddleware.authenticate, studentController.getProfile);
-
 router.put('/profile', authMiddleware.authenticate, upload.single('avatar'), studentController.updateProfile);
+router.patch('/profile/avatar', authMiddleware.authenticate, upload.single('avatar'), studentController.updateAvatar);
 
-router.patch('/avatar', authMiddleware.authenticate, upload.single('avatar'), studentController.updateAvatar);
-
-router.get('/departments', studentController.getDepartments); // Добавьте этот маршрут
-
-router.get('/groups/:departmentId', studentController.getGroupsByDepartment); // Убедитесь, что этот маршрут существует
+// Маршруты для отделений и групп
+router.get('/departments', authMiddleware.authenticate, studentController.getDepartments);
+router.get('/groups/:departmentId', authMiddleware.authenticate, studentController.getGroupsByDepartment);
 
 module.exports = router;

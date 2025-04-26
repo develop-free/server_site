@@ -9,29 +9,40 @@ const { createUploadsFolder } = require('./utils/fileUtils');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Настройки CORS
 const corsOptions = {
-  origin: 'http://localhost:3000',
+  origin: 'http://localhost:3000', // Убедитесь, что это соответствует URL вашего фронтенда
   credentials: true,
-  optionsSuccessStatus: 200,
+  optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
+// Создание папки для загрузок
 createUploadsFolder();
 
-mongoose.connect(config.mongoURI)
+// Подключение к MongoDB
+mongoose.connect(config.mongoURI, {
+})
   .then(() => console.log('Подключение к MongoDB успешно'))
-  .catch((err) => console.error('Ошибка подключения к MongoDB:', err));
+  .catch(err => console.error('Ошибка подключения к MongoDB:', err));
 
+// Маршруты
 app.use('/api/auth', userRoutes);
-app.use('/api/students', studentRoutes);
+app.use('/api/students/profile', studentRoutes);
 
+// Обработка ошибок
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ message: 'Внутренняя ошибка сервера' });
+  res.status(500).json({
+    success: false,
+    message: 'Внутренняя ошибка сервера'
+  });
 });
 
+// Запуск сервера
 app.listen(PORT, () => {
   console.log(`Сервер запущен на порту ${PORT}`);
 });
