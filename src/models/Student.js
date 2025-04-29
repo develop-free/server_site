@@ -9,43 +9,47 @@ const StudentSchema = new mongoose.Schema({
   },
   firstName: {
     type: String,
-    required: true,
-    trim: true
+    trim: true,
+    default: ''
   },
   lastName: {
     type: String,
-    required: true,
-    trim: true
+    trim: true,
+    default: ''
   },
   middleName: {
     type: String,
-    trim: true
+    trim: true,
+    default: ''
   },
   birthDate: {
-    type: Date
+    type: Date,
+    default: null
   },
   department: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Department'
+    ref: 'Department',
+    default: null
   },
   group: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Group'
+    ref: 'Group',
+    default: null
   },
   email: {
     type: String,
-    required: true,
-    unique: true,
     trim: true,
-    lowercase: true
+    lowercase: true,
+    default: ''
   },
   avatar: {
-    type: String
+    type: String,
+    default: null
   },
   password: {
     type: String,
-    required: true,
-    select: false // чтобы не возвращать пароль в запросах
+    select: false,
+    default: ''
   },
   createdAt: {
     type: Date,
@@ -58,12 +62,11 @@ const StudentSchema = new mongoose.Schema({
 });
 
 StudentSchema.pre('save', async function(next) {
-  if (this.isModified('password')) {
+  if (this.isModified('password') && this.password) {
     this.password = await bcrypt.hash(this.password, 10);
   }
   next();
 });
-
 
 // Автоматическое обновление updatedAt
 StudentSchema.pre('save', function(next) {

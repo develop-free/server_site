@@ -31,7 +31,7 @@ mongoose.connect(config.mongoURI, {
 
 // Маршруты
 app.use('/api/auth', userRoutes);
-app.use('/api/students/profile', studentRoutes);
+app.use('/api/students', studentRoutes);
 
 // Обработка ошибок
 app.use((err, req, res, next) => {

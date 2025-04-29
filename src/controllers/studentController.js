@@ -9,24 +9,36 @@ const Student = require('../models/Student');
 // Получение профиля студента
 const getProfile = async (req, res) => {
   try {
-    const student = await Student.findOne({ user: req.user.id })
+    let student = await Student.findOne({ user: req.user.id })
       .populate('department', 'name _id')
       .populate('group', 'name _id');
 
     if (!student) {
-      return res.status(404).json({
-        success: false,
-        message: 'Профиль студента не найден'
+      // Возвращаем пустой профиль без сохранения в БД
+      return res.json({
+        success: true,
+        isNewUser: true,
+        data: {
+          firstName: '',
+          lastName: '',
+          middleName: '',
+          birthDate: '',
+          department: null,
+          group: null,
+          email: req.user.email || '',
+          avatar: null
+        }
       });
     }
 
     res.json({
       success: true,
+      isNewUser: false,
       data: {
         firstName: student.firstName,
         lastName: student.lastName,
         middleName: student.middleName,
-        birthDate: student.birthDate?.toISOString().split('T')[0],
+        birthDate: student.birthDate?.toISOString().split('T')[0] || '',
         department: student.department,
         group: student.group,
         email: student.email,
@@ -41,6 +53,8 @@ const getProfile = async (req, res) => {
     });
   }
 };
+
+
 
 // Обновление профиля студента
 const updateProfile = async (req, res) => {
@@ -80,7 +94,7 @@ const updateProfile = async (req, res) => {
 
     if (req.file) {
       const oldStudent = await Student.findOne({ user: req.user.id });
-      
+
       if (oldStudent?.avatar) {
         try {
           const oldPath = path.join(__dirname, '../../', oldStudent.avatar);
@@ -187,7 +201,7 @@ const updateAvatar = async (req, res) => {
 
   } catch (error) {
     console.error('Ошибка обновления аватара:', error);
-    
+
     if (req.file) {
       try {
         const filePath = path.join(__dirname, '../../uploads/', req.file.filename);
@@ -226,7 +240,8 @@ const getDepartments = async (req, res) => {
 const getGroupsByDepartment = async (req, res) => {
   try {
     const { departmentId } = req.params;
-    
+
+    // 1. Валидация ID отделения
     if (!departmentId) {
       return res.status(400).json({
         success: false,
@@ -234,16 +249,47 @@ const getGroupsByDepartment = async (req, res) => {
       });
     }
 
-    const groups = await Group.find({ department: departmentId }).select('name _id');
+    // 2. Проверка формата ID (должен быть валидный ObjectId)
+    if (!mongoose.Types.ObjectId.isValid(departmentId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Неверный формат ID отделения'
+      });
+    }
+
+    // 3. Поиск групп в базе данных
+    const groups = await Group.find({ 
+      department: new mongoose.Types.ObjectId(departmentId) 
+    }).select('_id name').lean();
+
+    // 4. Нормализация данных перед отправкой
+    const normalizedGroups = groups.map(group => ({
+      _id: group._id.toString(),
+      name: group.name || 'Без названия'
+    }));
+
+    // 5. Успешный ответ
     res.json({
       success: true,
-      data: groups
+      data: normalizedGroups
     });
+
   } catch (error) {
-    console.error('Ошибка получения групп:', error);
-    res.status(500).json({
+    console.error('Ошибка при получении групп:', error);
+    
+    // 6. Обработка разных типов ошибок
+    let errorMessage = 'Ошибка сервера при получении групп';
+    let statusCode = 500;
+
+    if (error.name === 'CastError') {
+      errorMessage = 'Неверный формат ID отделения';
+      statusCode = 400;
+    }
+
+    res.status(statusCode).json({
       success: false,
-      message: 'Ошибка сервера при получении групп'
+      message: errorMessage,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -260,8 +306,6 @@ const changePassword = async (req, res) => {
       });
     }
 
-    // Здесь должна быть логика проверки текущего пароля и обновления на новый
-    // Например, если вы используете bcrypt:
     const isMatch = await bcrypt.compare(currentPassword, student.password);
     if (!isMatch) {
       return res.status(400).json({ success: false, message: 'Текущий пароль неверен' });
@@ -282,7 +326,6 @@ const changePassword = async (req, res) => {
   }
 };
 
-// Экспорт методов
 module.exports = {
   getProfile,
   updateProfile,
