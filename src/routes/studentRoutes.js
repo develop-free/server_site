@@ -9,8 +9,8 @@ router.get('/profile', authMiddleware.authenticate, studentController.getProfile
 router.put('/profile', authMiddleware.authenticate, upload.single('avatar'), studentController.updateProfile);
 router.patch('/profile/avatar', authMiddleware.authenticate, upload.single('avatar'), studentController.updateAvatar);
 
-// Маршруты для отделений и групп
-router.get('/departments', authMiddleware.authenticate, studentController.getDepartments);
+// Маршруты для отделений и групп (изменяем путь)
+router.get('/departments/all', authMiddleware.authenticate, studentController.getDepartments);
 router.get('/groups/:departmentId', authMiddleware.authenticate, studentController.getGroupsByDepartment);
 
 module.exports = router;

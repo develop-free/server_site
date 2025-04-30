@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
 const { promisify } = require('util');
@@ -241,15 +242,7 @@ const getGroupsByDepartment = async (req, res) => {
   try {
     const { departmentId } = req.params;
 
-    // 1. Валидация ID отделения
-    if (!departmentId) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID отделения не указан'
-      });
-    }
-
-    // 2. Проверка формата ID (должен быть валидный ObjectId)
+    // Проверка на валидный ObjectId
     if (!mongoose.Types.ObjectId.isValid(departmentId)) {
       return res.status(400).json({
         success: false,
@@ -257,40 +250,11 @@ const getGroupsByDepartment = async (req, res) => {
       });
     }
 
-    // 3. Поиск групп в базе данных
-    const groups = await Group.find({ 
-      department: new mongoose.Types.ObjectId(departmentId) 
-    }).select('_id name').lean();
-
-    // 4. Нормализация данных перед отправкой
-    const normalizedGroups = groups.map(group => ({
-      _id: group._id.toString(),
-      name: group.name || 'Без названия'
-    }));
-
-    // 5. Успешный ответ
-    res.json({
-      success: true,
-      data: normalizedGroups
-    });
-
+    const groups = await Group.find({ department: departmentId });
+    res.json({ success: true, data: groups });
   } catch (error) {
-    console.error('Ошибка при получении групп:', error);
-    
-    // 6. Обработка разных типов ошибок
-    let errorMessage = 'Ошибка сервера при получении групп';
-    let statusCode = 500;
-
-    if (error.name === 'CastError') {
-      errorMessage = 'Неверный формат ID отделения';
-      statusCode = 400;
-    }
-
-    res.status(statusCode).json({
-      success: false,
-      message: errorMessage,
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
+    console.error('Ошибка:', error);
+    res.status(500).json({ success: false, message: 'Ошибка сервера' });
   }
 };
 
