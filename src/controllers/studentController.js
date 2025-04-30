@@ -62,6 +62,33 @@ const updateProfile = async (req, res) => {
   try {
     const { firstName, lastName, middleName, birthDate, department, group, email } = req.body;
 
+    // Проверяем, существует ли студент
+    let student = await Student.findOne({ user: req.user.id });
+    
+    if (!student) {
+      // Если студента нет, создаем нового (если это допустимо в вашей логике)
+      student = new Student({
+        user: req.user.id,
+        firstName,
+        lastName,
+        middleName,
+        birthDate: birthDate || null,
+        department: department || null,
+        group: group || null,
+        email,
+      });
+    } else {
+      // Если студент есть, обновляем данные
+      student.firstName = firstName;
+      student.lastName = lastName;
+      student.middleName = middleName;
+      student.birthDate = birthDate || null;
+      student.department = department || null;
+      student.group = group || null;
+      student.email = email;
+    }
+
+    // Валидация отделения и группы
     if (department) {
       const deptExists = await Department.exists({ _id: department });
       if (!deptExists) {
@@ -82,23 +109,11 @@ const updateProfile = async (req, res) => {
       }
     }
 
-    const updateData = {
-      firstName,
-      lastName,
-      middleName,
-      birthDate: birthDate || null,
-      department: department || null,
-      group: group || null,
-      email,
-      updatedAt: new Date()
-    };
-
+    // Обработка аватара
     if (req.file) {
-      const oldStudent = await Student.findOne({ user: req.user.id });
-
-      if (oldStudent?.avatar) {
+      if (student.avatar) {
         try {
-          const oldPath = path.join(__dirname, '../../', oldStudent.avatar);
+          const oldPath = path.join(__dirname, '../../', student.avatar);
           if (fs.existsSync(oldPath)) {
             await unlinkAsync(oldPath);
           }
@@ -106,28 +121,28 @@ const updateProfile = async (req, res) => {
           console.error('Ошибка удаления старого аватара:', err);
         }
       }
-
-      updateData.avatar = `/uploads/${req.file.filename}`;
+      student.avatar = `/uploads/${req.file.filename}`;
     }
 
-    const updatedStudent = await Student.findOneAndUpdate(
-      { user: req.user.id },
-      updateData,
-      { new: true, runValidators: true }
-    ).populate('department group');
+    // Сохраняем студента
+    await student.save();
+
+    // Возвращаем обновленные данные
+    const populatedStudent = await Student.findById(student._id)
+      .populate('department group');
 
     res.json({
       success: true,
       message: 'Профиль успешно обновлен',
       data: {
-        firstName: updatedStudent.firstName,
-        lastName: updatedStudent.lastName,
-        middleName: updatedStudent.middleName,
-        birthDate: updatedStudent.birthDate?.toISOString().split('T')[0],
-        department: updatedStudent.department,
-        group: updatedStudent.group,
-        email: updatedStudent.email,
-        avatar: updatedStudent.avatar
+        firstName: populatedStudent.firstName,
+        lastName: populatedStudent.lastName,
+        middleName: populatedStudent.middleName,
+        birthDate: populatedStudent.birthDate?.toISOString().split('T')[0],
+        department: populatedStudent.department,
+        group: populatedStudent.group,
+        email: populatedStudent.email,
+        avatar: populatedStudent.avatar
       }
     });
 
