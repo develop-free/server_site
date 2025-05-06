@@ -5,7 +5,7 @@ const GroupSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  department: {
+  department_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Department',
     required: true

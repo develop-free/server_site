@@ -11,6 +11,6 @@ router.patch('/profile/avatar', authMiddleware.authenticate, upload.single('avat
 
 // Маршруты для отделений и групп (изменяем путь)
 router.get('/departments/all', authMiddleware.authenticate, studentController.getDepartments);
-router.get('/groups/:departmentId', authMiddleware.authenticate, studentController.getGroupsByDepartment);
+router.get('/groups/:department_id', authMiddleware.authenticate, studentController.getGroupsByDepartment);
 
 module.exports = router;
