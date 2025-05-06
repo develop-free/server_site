@@ -1,21 +1,14 @@
-const mongoose = require('mongoose');
-const path = require('path');
-const fs = require('fs');
-const { promisify } = require('util');
-const unlinkAsync = promisify(fs.unlink);
-const Department = require('../models/Department');
-const Group = require('../models/Group');
-const Student = require('../models/Student');
-
-// Получение профиля студента
 const getProfile = async (req, res) => {
   try {
     let student = await Student.findOne({ user: req.user.id })
       .populate('department', 'name _id')
-      .populate('group', 'name _id');
+      .populate('group', 'name _id')
+      .populate({
+        path: 'user',
+        select: 'email'
+      });
 
     if (!student) {
-      // Возвращаем пустой профиль без сохранения в БД
       return res.json({
         success: true,
         isNewUser: true,
@@ -27,7 +20,8 @@ const getProfile = async (req, res) => {
           department: null,
           group: null,
           email: req.user.email || '',
-          avatar: null
+          avatar: null,
+          admissionYear: new Date().getFullYear()
         }
       });
     }
@@ -42,8 +36,10 @@ const getProfile = async (req, res) => {
         birthDate: student.birthDate?.toISOString().split('T')[0] || '',
         department: student.department,
         group: student.group,
-        email: student.email,
-        avatar: student.avatar
+        email: student.user?.email || student.email || req.user.email,
+        admissionYear: student.admissionYear,
+        avatar: student.avatar,
+        user: { email: student.user?.email }
       }
     });
   } catch (error) {
@@ -55,18 +51,24 @@ const getProfile = async (req, res) => {
   }
 };
 
-
-
-// Обновление профиля студента
 const updateProfile = async (req, res) => {
   try {
-    const { firstName, lastName, middleName, birthDate, department, group, email } = req.body;
+    const { firstName, lastName, middleName, birthDate, department, group, email, admissionYear } = req.body;
 
-    // Проверяем, существует ли студент
+    console.log('Данные для обновления:', {
+      firstName,
+      lastName,
+      middleName,
+      birthDate,
+      department,
+      group,
+      email,
+      admissionYear
+    });
+
     let student = await Student.findOne({ user: req.user.id });
-    
+
     if (!student) {
-      // Если студента нет, создаем нового (если это допустимо в вашей логике)
       student = new Student({
         user: req.user.id,
         firstName,
@@ -75,20 +77,25 @@ const updateProfile = async (req, res) => {
         birthDate: birthDate || null,
         department: department || null,
         group: group || null,
-        email,
+        email: email || req.user.email,
+        admissionYear: admissionYear || new Date().getFullYear()
       });
     } else {
-      // Если студент есть, обновляем данные
       student.firstName = firstName;
       student.lastName = lastName;
       student.middleName = middleName;
       student.birthDate = birthDate || null;
       student.department = department || null;
       student.group = group || null;
-      student.email = email;
+      student.email = email || student.email;
+      student.admissionYear = admissionYear || student.admissionYear;
     }
 
-    // Валидация отделения и группы
+    // Обновляем email в модели User
+    if (email && email !== req.user.email) {
+      await User.findByIdAndUpdate(req.user.id, { email });
+    }
+
     if (department) {
       const deptExists = await Department.exists({ _id: department });
       if (!deptExists) {
@@ -109,7 +116,6 @@ const updateProfile = async (req, res) => {
       }
     }
 
-    // Обработка аватара
     if (req.file) {
       if (student.avatar) {
         try {
@@ -124,12 +130,15 @@ const updateProfile = async (req, res) => {
       student.avatar = `/uploads/${req.file.filename}`;
     }
 
-    // Сохраняем студента
+    console.log('Документ для сохранения:', student);
     await student.save();
 
-    // Возвращаем обновленные данные
     const populatedStudent = await Student.findById(student._id)
-      .populate('department group');
+      .populate('department group')
+      .populate({
+        path: 'user',
+        select: 'email'
+      });
 
     res.json({
       success: true,
@@ -141,7 +150,8 @@ const updateProfile = async (req, res) => {
         birthDate: populatedStudent.birthDate?.toISOString().split('T')[0],
         department: populatedStudent.department,
         group: populatedStudent.group,
-        email: populatedStudent.email,
+        email: populatedStudent.user?.email || populatedStudent.email,
+        admissionYear: populatedStudent.admissionYear,
         avatar: populatedStudent.avatar
       }
     });
@@ -172,135 +182,6 @@ const updateProfile = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Ошибка сервера при обновлении профиля'
-    });
-  }
-};
-
-// Обновление аватара
-const updateAvatar = async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'Файл аватара не был загружен'
-      });
-    }
-
-    const student = await Student.findOne({ user: req.user.id });
-    if (!student) {
-      await unlinkAsync(path.join(__dirname, '../../uploads/', req.file.filename));
-      return res.status(404).json({
-        success: false,
-        message: 'Студент не найден'
-      });
-    }
-
-    if (student.avatar) {
-      try {
-        const oldPath = path.join(__dirname, '../../', student.avatar);
-        if (fs.existsSync(oldPath)) {
-          await unlinkAsync(oldPath);
-        }
-      } catch (err) {
-        console.error('Ошибка удаления старого аватара:', err);
-      }
-    }
-
-    student.avatar = `/uploads/${req.file.filename}`;
-    await student.save();
-
-    res.json({
-      success: true,
-      message: 'Аватар успешно обновлен',
-      avatar: student.avatar
-    });
-
-  } catch (error) {
-    console.error('Ошибка обновления аватара:', error);
-
-    if (req.file) {
-      try {
-        const filePath = path.join(__dirname, '../../uploads/', req.file.filename);
-        if (fs.existsSync(filePath)) {
-          await unlinkAsync(filePath);
-        }
-      } catch (err) {
-        console.error('Ошибка удаления загруженного файла:', err);
-      }
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Ошибка сервера при обновлении аватара'
-    });
-  }
-};
-
-// Получение списка отделений
-const getDepartments = async (req, res) => {
-  try {
-    const departments = await Department.find().select('name _id');
-    res.json({
-      success: true,
-      data: departments
-    });
-  } catch (error) {
-    console.error('Ошибка получения отделений:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Ошибка сервера при получении отделений'
-    });
-  }
-};
-
-const getGroupsByDepartment = async (req, res) => {
-  try {
-    const { departmentId } = req.params;
-
-    // Проверка на валидный ObjectId
-    if (!mongoose.Types.ObjectId.isValid(departmentId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Неверный формат ID отделения'
-      });
-    }
-
-    const groups = await Group.find({ department: departmentId });
-    res.json({ success: true, data: groups });
-  } catch (error) {
-    console.error('Ошибка:', error);
-    res.status(500).json({ success: false, message: 'Ошибка сервера' });
-  }
-};
-
-const changePassword = async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    const student = await Student.findOne({ user: req.user.id });
-
-    if (!student) {
-      return res.status(404).json({
-        success: false,
-        message: 'Студент не найден'
-      });
-    }
-
-    const isMatch = await bcrypt.compare(currentPassword, student.password);
-    if (!isMatch) {
-      return res.status(400).json({ success: false, message: 'Текущий пароль неверен' });
-    }
-    student.password = await bcrypt.hash(newPassword, 10);
-    await student.save();
-
-    res.json({
-      success: true,
-      message: 'Пароль успешно изменен'
-    });
-  } catch (error) {
-    console.error('Ошибка при изменении пароля:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Ошибка сервера при изменении пароля'
     });
   }
 };

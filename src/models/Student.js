@@ -11,17 +11,35 @@ const StudentSchema = new mongoose.Schema({
   firstName: {
     type: String,
     trim: true,
-    default: ''
+    default: '',
+    validate: {
+      validator: function(v) {
+        return /^[\u0400-\u04FFa-zA-Z\s-]+$/u.test(v);
+      },
+      message: 'Имя может содержать только буквы и дефисы'
+    }
   },
   lastName: {
     type: String,
     trim: true,
-    default: ''
+    default: '',
+    validate: {
+      validator: function(v) {
+        return /^[\u0400-\u04FFa-zA-Z\s-]+$/u.test(v);
+      },
+      message: 'Фамилия может содержать только буквы и дефисы'
+    }
   },
   middleName: {
     type: String,
     trim: true,
-    default: ''
+    default: '',
+    validate: {
+      validator: function(v) {
+        return v === '' || /^[\u0400-\u04FFa-zA-Z\s-]+$/u.test(v);
+      },
+      message: 'Отчество может содержать только буквы и дефисы'
+    }
   },
   birthDate: {
     type: Date,
@@ -42,6 +60,13 @@ const StudentSchema = new mongoose.Schema({
     trim: true,
     lowercase: true,
     default: ''
+  },
+  admissionYear: {
+    type: Number,
+    required: true,
+    min: 2000,
+    max: new Date().getFullYear(),
+    default: new Date().getFullYear()
   },
   avatar: {
     type: String,
@@ -66,11 +91,6 @@ StudentSchema.pre('save', async function(next) {
   if (this.isModified('password') && this.password) {
     this.password = await bcrypt.hash(this.password, 10);
   }
-  next();
-});
-
-// Автоматическое обновление updatedAt
-StudentSchema.pre('save', function(next) {
   this.updatedAt = new Date();
   next();
 });

@@ -5,7 +5,7 @@ const GroupSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  department_id: {
+  department_id: { // Измененное название поля
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Department',
     required: true
@@ -15,5 +15,4 @@ const GroupSchema = new mongoose.Schema({
     default: Date.now
   }
 });
-
 module.exports = mongoose.model('Group', GroupSchema);
