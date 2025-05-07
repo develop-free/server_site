@@ -1,3 +1,12 @@
+const Student = require('../models/Student');
+const User = require('../models/User');
+const Department = require('../models/Department');
+const Group = require('../models/Group');
+const path = require('path');
+const fs = require('fs');
+const { promisify } = require('util');
+const unlinkAsync = promisify(fs.unlink);
+
 const getProfile = async (req, res) => {
   try {
     let student = await Student.findOne({ user: req.user.id })
@@ -55,17 +64,6 @@ const updateProfile = async (req, res) => {
   try {
     const { firstName, lastName, middleName, birthDate, department, group, email, admissionYear } = req.body;
 
-    console.log('Данные для обновления:', {
-      firstName,
-      lastName,
-      middleName,
-      birthDate,
-      department,
-      group,
-      email,
-      admissionYear
-    });
-
     let student = await Student.findOne({ user: req.user.id });
 
     if (!student) {
@@ -91,7 +89,6 @@ const updateProfile = async (req, res) => {
       student.admissionYear = admissionYear || student.admissionYear;
     }
 
-    // Обновляем email в модели User
     if (email && email !== req.user.email) {
       await User.findByIdAndUpdate(req.user.id, { email });
     }
@@ -130,7 +127,6 @@ const updateProfile = async (req, res) => {
       student.avatar = `/uploads/${req.file.filename}`;
     }
 
-    console.log('Документ для сохранения:', student);
     await student.save();
 
     const populatedStudent = await Student.findById(student._id)
@@ -186,11 +182,83 @@ const updateProfile = async (req, res) => {
   }
 };
 
+const updateAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Файл не был загружен'
+      });
+    }
+
+    const student = await Student.findOne({ user: req.user.id });
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Профиль студента не найден'
+      });
+    }
+
+    if (student.avatar) {
+      try {
+        const oldPath = path.join(__dirname, '../../', student.avatar);
+        if (fs.existsSync(oldPath)) {
+          await unlinkAsync(oldPath);
+        }
+      } catch (err) {
+        console.error('Ошибка удаления старого аватара:', err);
+      }
+    }
+
+    student.avatar = `/uploads/${req.file.filename}`;
+    await student.save();
+
+    res.json({
+      success: true,
+      message: 'Аватар успешно обновлен',
+      avatar: student.avatar
+    });
+  } catch (error) {
+    console.error('Ошибка обновления аватара:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ошибка сервера при обновлении аватара'
+    });
+  }
+};
+
+const getDepartments = async (req, res) => {
+  try {
+    const departments = await Department.find();
+    res.json(departments);
+  } catch (err) {
+    res.status(500).json({
+      message: 'Ошибка загрузки отделений',
+      error: err.message
+    });
+  }
+};
+
+const getGroupsByDepartment = async (req, res) => {
+  try {
+    const { department_id } = req.query;
+    if (!department_id) {
+      return res.status(400).json({ message: 'Не указано отделение' });
+    }
+    const groups = await Group.find({ department_id });
+    res.json(groups);
+  } catch (err) {
+    res.status(500).json({
+      message: 'Ошибка загрузки групп',
+      error: err.message
+    });
+  }
+};
+
 module.exports = {
   getProfile,
   updateProfile,
   updateAvatar,
   getDepartments,
-  getGroupsByDepartment,
-  changePassword
-};
+  getGroupsByDepartment
+};  

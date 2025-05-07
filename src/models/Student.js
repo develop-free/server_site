@@ -14,7 +14,7 @@ const StudentSchema = new mongoose.Schema({
     default: '',
     validate: {
       validator: function(v) {
-        return /^[\u0400-\u04FFa-zA-Z\s-]+$/u.test(v);
+        return /^[А-Яа-яЁёA-Za-z\s-]+$/u.test(v);
       },
       message: 'Имя может содержать только буквы и дефисы'
     }
@@ -25,7 +25,7 @@ const StudentSchema = new mongoose.Schema({
     default: '',
     validate: {
       validator: function(v) {
-        return /^[\u0400-\u04FFa-zA-Z\s-]+$/u.test(v);
+        return /^[А-Яа-яЁёA-Za-z\s-]+$/u.test(v);
       },
       message: 'Фамилия может содержать только буквы и дефисы'
     }
@@ -36,7 +36,7 @@ const StudentSchema = new mongoose.Schema({
     default: '',
     validate: {
       validator: function(v) {
-        return v === '' || /^[\u0400-\u04FFa-zA-Z\s-]+$/u.test(v);
+        return v === '' || /^[А-Яа-яЁёA-Za-z\s-]+$/u.test(v);
       },
       message: 'Отчество может содержать только буквы и дефисы'
     }
