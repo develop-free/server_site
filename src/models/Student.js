@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
 
 const studentSchema = new mongoose.Schema({
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: [true, 'Идентификатор пользователя обязателен'],
+    unique: true, // Гарантирует один профиль студента на пользователя
+  },
   first_name: {
     type: String,
     required: [true, 'Имя обязательно'],
@@ -55,5 +61,6 @@ const studentSchema = new mongoose.Schema({
     default: null,
   },
 });
+
 
 module.exports = mongoose.model('Student', studentSchema);

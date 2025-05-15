@@ -15,15 +15,15 @@ const getProfile = async (req, res) => {
     if (!req.user?.id || !mongoose.isValidObjectId(req.user.id)) {
       return res.status(401).json({
         success: false,
-        message: 'Пользователь не аутентифицирован или неверный ID',
+        message: 'Пользователь не аутентифицирован или неверный идентификатор',
       });
     }
 
-    let student = await Student.findById(req.user.id)
+    let student = await Student.findOne({ user: req.user.id })
       .populate('department_id', 'name _id')
       .populate('group_id', 'name _id');
 
-    console.log('Student found:', student);
+    console.log('Найден студент:', student);
 
     const user = await User.findById(req.user.id).select('email login');
     if (!user) {
@@ -50,7 +50,7 @@ const getProfile = async (req, res) => {
           admission_year: new Date().getFullYear(),
         },
       };
-      console.log('Returning response for new user:', response);
+      console.log('Ответ для нового пользователя:', response);
       return res.json(response);
     }
 
@@ -70,7 +70,7 @@ const getProfile = async (req, res) => {
         avatar: student.avatar || null,
       },
     };
-    console.log('Returning response for existing user:', response);
+    console.log('Ответ для существующего пользователя:', response);
     res.json(response);
   } catch (error) {
     console.error('Ошибка при получении профиля:', error);
@@ -89,7 +89,7 @@ const createProfile = async (req, res) => {
     if (!req.user?.id || !mongoose.isValidObjectId(req.user.id)) {
       return res.status(401).json({
         success: false,
-        message: 'Пользователь не аутентифицирован или неверный ID',
+        message: 'Пользователь не аутентифицирован или неверный идентификатор',
       });
     }
 
@@ -109,17 +109,17 @@ const createProfile = async (req, res) => {
     if (!mongoose.isValidObjectId(department_id)) {
       return res.status(400).json({
         success: false,
-        message: 'Неверный формат ID отделения',
+        message: 'Неверный формат идентификатора отделения',
       });
     }
     if (!mongoose.isValidObjectId(group_id)) {
       return res.status(400).json({
         success: false,
-        message: 'Неверный формат ID группы',
+        message: 'Неверный формат идентификатора группы',
       });
     }
 
-    // Проверка существования department_id и group_id
+    // Проверка существования отделения и группы
     const deptExists = await Department.exists({ _id: department_id });
     if (!deptExists) {
       return res.status(400).json({
@@ -136,8 +136,8 @@ const createProfile = async (req, res) => {
       });
     }
 
-    // Проверка существования профиля
-    const existingStudent = await Student.findById(req.user.id);
+    // Проверка на существующий профиль по user
+    const existingStudent = await Student.findOne({ user: req.user.id });
     if (existingStudent) {
       return res.status(400).json({
         success: false,
@@ -145,7 +145,7 @@ const createProfile = async (req, res) => {
       });
     }
 
-    // Проверка уникальности login и email
+    // Проверка уникальности логина и email
     const loginExists = await User.findOne({ login, _id: { $ne: req.user.id } });
     if (loginExists) {
       return res.status(400).json({
@@ -163,7 +163,7 @@ const createProfile = async (req, res) => {
     }
 
     const studentData = {
-      _id: req.user.id,
+      user: req.user.id, // Связываем с аутентифицированным пользователем
       first_name,
       last_name,
       middle_name: middle_name || '',
@@ -175,7 +175,7 @@ const createProfile = async (req, res) => {
       admission_year: parseInt(admission_year, 10),
     };
 
-    console.log('Student data to save:', studentData);
+    console.log('Данные студента для сохранения:', studentData);
 
     let student = new Student(studentData);
 
@@ -210,7 +210,7 @@ const createProfile = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Ошибка создания профиля:', error);
+    console.error('Ошибка при создании профиля:', error);
 
     if (req.file) {
       try {
@@ -219,8 +219,17 @@ const createProfile = async (req, res) => {
           await unlinkAsync(filePath);
         }
       } catch (err) {
-        console.error('Ошибка удаления загруженного файла:', err);
+        console.error('Ошибка при удалении загруженного файла:', err);
       }
+    }
+
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return res.status(400).json({
+        success: false,
+        message: `Ошибка: значение для поля ${field} должно быть уникальным`,
+        errors: [error.errmsg],
+      });
     }
 
     if (error.name === 'ValidationError') {
@@ -232,31 +241,7 @@ const createProfile = async (req, res) => {
       });
     }
 
-    if (error.code === 121) {
-      const validationErrors = error.errInfo?.details?.schemaRulesNotSatisfied?.map(
-        (rule) => {
-          if (rule.missingProperties) {
-            return `Отсутствуют обязательные поля: ${rule.missingProperties.join(', ')}`;
-          }
-          if (rule.propertiesNotSatisfied) {
-            return rule.propertiesNotSatisfied.map((prop) => {
-              return `Поле ${prop.propertyName}: ${prop.description}`;
-            }).join('; ');
-          }
-          return `Неизвестная ошибка валидации: ${JSON.stringify(rule)}`;
-        }
-      ) || ['Неизвестная ошибка валидации'];
-
-      console.error('Validation errors:', validationErrors);
-
-      return res.status(400).json({
-        success: false,
-        message: 'Данные профиля не соответствуют требованиям',
-        errors: validationErrors,
-      });
-    }
-
-    res.status(400).json({
+    res.status(500).json({
       success: false,
       message: 'Ошибка сервера при создании профиля',
       error: error.message,
@@ -272,7 +257,7 @@ const updateProfile = async (req, res) => {
     if (!req.user?.id || !mongoose.isValidObjectId(req.user.id)) {
       return res.status(401).json({
         success: false,
-        message: 'Пользователь не аутентифицирован или неверный ID',
+        message: 'Пользователь не аутентифицирован или неверный идентификатор',
       });
     }
 
@@ -293,17 +278,17 @@ const updateProfile = async (req, res) => {
     if (!mongoose.isValidObjectId(department_id)) {
       return res.status(400).json({
         success: false,
-        message: 'Неверный формат ID отделения',
+        message: 'Неверный формат идентификатора отделения',
       });
     }
     if (!mongoose.isValidObjectId(group_id)) {
       return res.status(400).json({
-        success: false,
-        message: 'Неверный формат ID группы',
+ PSC: false,
+        message: 'Неверный формат идентификатора группы',
       });
     }
 
-    let student = await Student.findById(req.user.id);
+    let student = await Student.findOne({ user: req.user.id });
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -391,7 +376,7 @@ const updateProfile = async (req, res) => {
             await unlinkAsync(oldPath);
           }
         } catch (err) {
-          console.error('Ошибка удаления старого аватара:', err);
+          console.error('Ошибка при удалении старого аватара:', err);
         }
       }
       student.avatar = `/uploads/${req.file.filename}`;
@@ -404,7 +389,7 @@ const updateProfile = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Профиль успешно обновлен',
+      message: 'Профиль успешно обновлён',
       data: {
         first_name: populatedStudent.first_name,
         last_name: populatedStudent.last_name,
@@ -419,7 +404,7 @@ const updateProfile = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Ошибка обновления профиля:', error);
+    console.error('Ошибка при обновлении профиля:', error);
 
     if (req.file) {
       try {
@@ -428,7 +413,7 @@ const updateProfile = async (req, res) => {
           await unlinkAsync(filePath);
         }
       } catch (err) {
-        console.error('Ошибка удаления загруженного файла:', err);
+        console.error('Ошибка при удалении загруженного файла:', err);
       }
     }
 
@@ -441,31 +426,7 @@ const updateProfile = async (req, res) => {
       });
     }
 
-    if (error.code === 121) {
-      const validationErrors = error.errInfo?.details?.schemaRulesNotSatisfied?.map(
-        (rule) => {
-          if (rule.missingProperties) {
-            return `Отсутствуют обязательные поля: ${rule.missingProperties.join(', ')}`;
-          }
-          if (rule.propertiesNotSatisfied) {
-            return rule.propertiesNotSatisfied.map((prop) => {
-              return `Поле ${prop.propertyName}: ${prop.description}`;
-            }).join('; ');
-          }
-          return `Неизвестная ошибка валидации: ${JSON.stringify(rule)}`;
-        }
-      ) || ['Неизвестная ошибка валидации'];
-
-      console.error('Validation errors:', validationErrors);
-
-      return res.status(400).json({
-        success: false,
-        message: 'Данные профиля не соответствуют требованиям',
-        errors: validationErrors,
-      });
-    }
-
-    res.status(400).json({
+    res.status(500).json({
       success: false,
       message: 'Ошибка сервера при обновлении профиля',
       error: error.message,
