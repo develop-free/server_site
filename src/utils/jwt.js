@@ -7,13 +7,13 @@ const generateTokens = (user) => {
   const accessToken = jwt.sign(
     payload,
     config.jwt.secret,
-    { expiresIn: config.jwt.accessExpiration }
+    { expiresIn: config.jwt.accessExpiration || '1h' }
   );
   
   const refreshToken = jwt.sign(
     payload,
     config.jwt.refreshSecret,
-    { expiresIn: config.jwt.refreshExpiration }
+    { expiresIn: config.jwt.refreshExpiration || '15d' }
   );
 
   return { accessToken, refreshToken };
@@ -22,12 +22,10 @@ const generateTokens = (user) => {
 const verifyToken = (token, secret) => {
   try {
     const decoded = jwt.verify(token, secret);
-    
-    // Добавляем проверку "почти истекшего" токена
     const now = Math.floor(Date.now() / 1000);
     const expiresIn = decoded.exp - now;
     
-    if (expiresIn < 60 * 5) { // Если осталось меньше 5 минут
+    if (expiresIn < 60 * 5) {
       decoded.isAboutToExpire = true;
     }
     

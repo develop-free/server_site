@@ -1,98 +1,59 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
 
-const StudentSchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    unique: true
+const studentSchema = new mongoose.Schema({
+  first_name: {
+    type: String,
+    required: [true, 'Имя обязательно'],
+    trim: true,
+    match: [/^[A-Za-zА-Яа-яЁё\s-]+$/, 'Имя должно содержать только буквы, пробелы и дефисы'],
   },
-  firstName: {
+  last_name: {
+    type: String,
+    required: [true, 'Фамилия обязательна'],
+    trim: true,
+    match: [/^[A-Za-zА-Яа-яЁё\s-]+$/, 'Фамилия должна содержать только буквы, пробелы и дефисы'],
+  },
+  middle_name: {
     type: String,
     trim: true,
-    default: '',
-    validate: {
-      validator: function(v) {
-        return /^[А-Яа-яЁёA-Za-z\s-]+$/u.test(v);
-      },
-      message: 'Имя может содержать только буквы и дефисы'
-    }
+    match: [/^[A-Za-zА-Яа-яЁё\s-]*$/, 'Отчество должно содержать только буквы, пробелы и дефисы'],
   },
-  lastName: {
-    type: String,
-    trim: true,
-    default: '',
-    validate: {
-      validator: function(v) {
-        return /^[А-Яа-яЁёA-Za-z\s-]+$/u.test(v);
-      },
-      message: 'Фамилия может содержать только буквы и дефисы'
-    }
-  },
-  middleName: {
-    type: String,
-    trim: true,
-    default: '',
-    validate: {
-      validator: function(v) {
-        return v === '' || /^[А-Яа-яЁёA-Za-z\s-]+$/u.test(v);
-      },
-      message: 'Отчество может содержать только буквы и дефисы'
-    }
-  },
-  birthDate: {
+  birth_date: {
     type: Date,
-    default: null
+    required: [true, 'Дата рождения обязательна'],
   },
-  department: {
+  department_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Department',
-    default: null
+    required: [true, 'Отделение обязательно'],
   },
-  group: {
+  group_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Group',
-    default: null
+    required: [true, 'Группа обязательна'],
+  },
+  login: {
+    type: String,
+    required: [true, 'Логин обязателен'],
+    trim: true,
+    match: [/^[A-Za-z0-9_-]{3,50}$/, 'Логин должен содержать 3-50 символов (буквы, цифры, _, -)'],
   },
   email: {
     type: String,
+    required: [true, 'Электронная почта обязательна'],
     trim: true,
-    lowercase: true,
-    default: ''
+    match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Некорректный формат электронной почты'],
   },
-  admissionYear: {
+  admission_year: {
     type: Number,
-    required: true,
-    min: 2000,
-    max: new Date().getFullYear(),
-    default: new Date().getFullYear()
+    required: [true, 'Год поступления обязателен'],
+    min: [2000, 'Год поступления не может быть раньше 2000'],
+    max: [new Date().getFullYear(), 'Год поступления не может быть в будущем'],
   },
   avatar: {
     type: String,
-    default: null
+    default: null,
   },
-  password: {
-    type: String,
-    select: false,
-    default: ''
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
 });
 
-StudentSchema.pre('save', async function(next) {
-  if (this.isModified('password') && this.password) {
-    this.password = await bcrypt.hash(this.password, 10);
-  }
-  this.updatedAt = new Date();
-  next();
-});
-
-module.exports = mongoose.model('Student', StudentSchema);
+module.exports = mongoose.model('Student', studentSchema);

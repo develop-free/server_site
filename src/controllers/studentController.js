@@ -5,113 +5,383 @@ const Group = require('../models/Group');
 const path = require('path');
 const fs = require('fs');
 const { promisify } = require('util');
+const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
 const unlinkAsync = promisify(fs.unlink);
 
 const getProfile = async (req, res) => {
   try {
-    let student = await Student.findOne({ user: req.user.id })
-      .populate('department', 'name _id')
-      .populate('group', 'name _id')
-      .populate({
-        path: 'user',
-        select: 'email'
-      });
-
-    if (!student) {
-      return res.json({
-        success: true,
-        isNewUser: true,
-        data: {
-          firstName: '',
-          lastName: '',
-          middleName: '',
-          birthDate: '',
-          department: null,
-          group: null,
-          email: req.user.email || '',
-          avatar: null,
-          admissionYear: new Date().getFullYear()
-        }
+    console.log('req.user:', req.user);
+    if (!req.user?.id || !mongoose.isValidObjectId(req.user.id)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Пользователь не аутентифицирован или неверный ID',
       });
     }
 
-    res.json({
+    let student = await Student.findById(req.user.id)
+      .populate('department_id', 'name _id')
+      .populate('group_id', 'name _id');
+
+    console.log('Student found:', student);
+
+    const user = await User.findById(req.user.id).select('email login');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Пользователь не найден',
+      });
+    }
+
+    if (!student) {
+      const response = {
+        success: true,
+        isNewUser: true,
+        data: {
+          first_name: '',
+          last_name: '',
+          middle_name: '',
+          birth_date: '',
+          department_id: null,
+          group_id: null,
+          login: user.login || '',
+          email: user.email || '',
+          avatar: null,
+          admission_year: new Date().getFullYear(),
+        },
+      };
+      console.log('Returning response for new user:', response);
+      return res.json(response);
+    }
+
+    const response = {
       success: true,
       isNewUser: false,
       data: {
-        firstName: student.firstName,
-        lastName: student.lastName,
-        middleName: student.middleName,
-        birthDate: student.birthDate?.toISOString().split('T')[0] || '',
-        department: student.department,
-        group: student.group,
-        email: student.user?.email || student.email || req.user.email,
-        admissionYear: student.admissionYear,
-        avatar: student.avatar,
-        user: { email: student.user?.email }
-      }
-    });
+        first_name: student.first_name || '',
+        last_name: student.last_name || '',
+        middle_name: student.middle_name || '',
+        birth_date: student.birth_date?.toISOString().split('T')[0] || '',
+        department_id: student.department_id,
+        group_id: student.group_id,
+        login: student.login || user.login || '',
+        email: student.email || user.email || '',
+        admission_year: student.admission_year || new Date().getFullYear(),
+        avatar: student.avatar || null,
+      },
+    };
+    console.log('Returning response for existing user:', response);
+    res.json(response);
   } catch (error) {
     console.error('Ошибка при получении профиля:', error);
     res.status(500).json({
       success: false,
-      message: 'Внутренняя ошибка сервера'
+      message: 'Внутренняя ошибка сервера',
+    });
+  }
+};
+
+const createProfile = async (req, res) => {
+  try {
+    console.log('req.user:', req.user);
+    console.log('req.body:', req.body);
+
+    if (!req.user?.id || !mongoose.isValidObjectId(req.user.id)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Пользователь не аутентифицирован или неверный ID',
+      });
+    }
+
+    const {
+      first_name,
+      last_name,
+      middle_name,
+      birth_date,
+      department_id,
+      group_id,
+      login,
+      email,
+      admission_year,
+    } = req.body;
+
+    // Проверка валидности ObjectId
+    if (!mongoose.isValidObjectId(department_id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Неверный формат ID отделения',
+      });
+    }
+    if (!mongoose.isValidObjectId(group_id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Неверный формат ID группы',
+      });
+    }
+
+    // Проверка существования department_id и group_id
+    const deptExists = await Department.exists({ _id: department_id });
+    if (!deptExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Указанное отделение не существует',
+      });
+    }
+
+    const groupExists = await Group.exists({ _id: group_id });
+    if (!groupExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Указанная группа не существует',
+      });
+    }
+
+    // Проверка существования профиля
+    const existingStudent = await Student.findById(req.user.id);
+    if (existingStudent) {
+      return res.status(400).json({
+        success: false,
+        message: 'Профиль для этого пользователя уже существует',
+      });
+    }
+
+    // Проверка уникальности login и email
+    const loginExists = await User.findOne({ login, _id: { $ne: req.user.id } });
+    if (loginExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Этот логин уже занят',
+      });
+    }
+
+    const emailExists = await User.findOne({ email, _id: { $ne: req.user.id } });
+    if (emailExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Этот email уже используется',
+      });
+    }
+
+    const studentData = {
+      _id: req.user.id,
+      first_name,
+      last_name,
+      middle_name: middle_name || '',
+      birth_date: new Date(birth_date),
+      department_id,
+      group_id,
+      login,
+      email,
+      admission_year: parseInt(admission_year, 10),
+    };
+
+    console.log('Student data to save:', studentData);
+
+    let student = new Student(studentData);
+
+    if (req.file) {
+      student.avatar = `/uploads/${req.file.filename}`;
+    }
+
+    await student.save();
+
+    await User.findByIdAndUpdate(req.user.id, {
+      login,
+      email,
+    });
+
+    const populatedStudent = await Student.findById(student._id)
+      .populate('department_id group_id');
+
+    res.json({
+      success: true,
+      message: 'Профиль успешно создан',
+      data: {
+        first_name: populatedStudent.first_name,
+        last_name: populatedStudent.last_name,
+        middle_name: populatedStudent.middle_name,
+        birth_date: populatedStudent.birth_date?.toISOString().split('T')[0] || '',
+        department_id: populatedStudent.department_id,
+        group_id: populatedStudent.group_id,
+        login: populatedStudent.login,
+        email: populatedStudent.email,
+        admission_year: populatedStudent.admission_year,
+        avatar: populatedStudent.avatar,
+      },
+    });
+  } catch (error) {
+    console.error('Ошибка создания профиля:', error);
+
+    if (req.file) {
+      try {
+        const filePath = path.join(__dirname, '../../Uploads/', req.file.filename);
+        if (fs.existsSync(filePath)) {
+          await unlinkAsync(filePath);
+        }
+      } catch (err) {
+        console.error('Ошибка удаления загруженного файла:', err);
+      }
+    }
+
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map((err) => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Ошибка валидации данных',
+        errors,
+      });
+    }
+
+    if (error.code === 121) {
+      const validationErrors = error.errInfo?.details?.schemaRulesNotSatisfied?.map(
+        (rule) => {
+          if (rule.missingProperties) {
+            return `Отсутствуют обязательные поля: ${rule.missingProperties.join(', ')}`;
+          }
+          if (rule.propertiesNotSatisfied) {
+            return rule.propertiesNotSatisfied.map((prop) => {
+              return `Поле ${prop.propertyName}: ${prop.description}`;
+            }).join('; ');
+          }
+          return `Неизвестная ошибка валидации: ${JSON.stringify(rule)}`;
+        }
+      ) || ['Неизвестная ошибка валидации'];
+
+      console.error('Validation errors:', validationErrors);
+
+      return res.status(400).json({
+        success: false,
+        message: 'Данные профиля не соответствуют требованиям',
+        errors: validationErrors,
+      });
+    }
+
+    res.status(400).json({
+      success: false,
+      message: 'Ошибка сервера при создании профиля',
+      error: error.message,
     });
   }
 };
 
 const updateProfile = async (req, res) => {
   try {
-    const { firstName, lastName, middleName, birthDate, department, group, email, admissionYear } = req.body;
+    console.log('req.user:', req.user);
+    console.log('req.body:', req.body);
 
-    let student = await Student.findOne({ user: req.user.id });
-
-    if (!student) {
-      student = new Student({
-        user: req.user.id,
-        firstName,
-        lastName,
-        middleName,
-        birthDate: birthDate || null,
-        department: department || null,
-        group: group || null,
-        email: email || req.user.email,
-        admissionYear: admissionYear || new Date().getFullYear()
+    if (!req.user?.id || !mongoose.isValidObjectId(req.user.id)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Пользователь не аутентифицирован или неверный ID',
       });
-    } else {
-      student.firstName = firstName;
-      student.lastName = lastName;
-      student.middleName = middleName;
-      student.birthDate = birthDate || null;
-      student.department = department || null;
-      student.group = group || null;
-      student.email = email || student.email;
-      student.admissionYear = admissionYear || student.admissionYear;
     }
 
-    if (email && email !== req.user.email) {
-      await User.findByIdAndUpdate(req.user.id, { email });
+    const {
+      first_name,
+      last_name,
+      middle_name,
+      birth_date,
+      department_id,
+      group_id,
+      login,
+      email,
+      admission_year,
+      oldPassword,
+      newPassword,
+    } = req.body;
+
+    if (!mongoose.isValidObjectId(department_id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Неверный формат ID отделения',
+      });
+    }
+    if (!mongoose.isValidObjectId(group_id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Неверный формат ID группы',
+      });
     }
 
-    if (department) {
-      const deptExists = await Department.exists({ _id: department });
-      if (!deptExists) {
+    let student = await Student.findById(req.user.id);
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Профиль студента не найден. Используйте POST для создания нового профиля.',
+      });
+    }
+
+    const deptExists = await Department.exists({ _id: department_id });
+    if (!deptExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Указанное отделение не существует',
+      });
+    }
+
+    const groupExists = await Group.exists({ _id: group_id });
+    if (!groupExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Указанная группа не существует',
+      });
+    }
+
+    const loginExists = await User.findOne({ login, _id: { $ne: req.user.id } });
+    if (loginExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Этот логин уже занят',
+      });
+    }
+
+    const emailExists = await User.findOne({ email, _id: { $ne: req.user.id } });
+    if (emailExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Этот email уже используется',
+      });
+    }
+
+    const studentData = {
+      first_name,
+      last_name,
+      middle_name: middle_name || '',
+      birth_date: new Date(birth_date),
+      department_id,
+      group_id,
+      login,
+      email,
+      admission_year: parseInt(admission_year, 10),
+    };
+
+    Object.assign(student, studentData);
+
+    if (oldPassword && newPassword) {
+      const user = await User.findById(req.user.id).select('+password');
+      if (!user) {
         return res.status(400).json({
           success: false,
-          message: 'Указанное отделение не существует'
+          message: 'Пользователь не найден',
         });
       }
-    }
 
-    if (group) {
-      const groupExists = await Group.exists({ _id: group });
-      if (!groupExists) {
+      const isMatch = await bcrypt.compare(oldPassword, user.password);
+      if (!isMatch) {
         return res.status(400).json({
           success: false,
-          message: 'Указанная группа не существует'
+          message: 'Неверный старый пароль',
         });
       }
+
+      user.password = await bcrypt.hash(newPassword, 10);
+      await user.save();
     }
+
+    await User.findByIdAndUpdate(req.user.id, {
+      login,
+      email,
+    });
 
     if (req.file) {
       if (student.avatar) {
@@ -130,34 +400,30 @@ const updateProfile = async (req, res) => {
     await student.save();
 
     const populatedStudent = await Student.findById(student._id)
-      .populate('department group')
-      .populate({
-        path: 'user',
-        select: 'email'
-      });
+      .populate('department_id group_id');
 
     res.json({
       success: true,
       message: 'Профиль успешно обновлен',
       data: {
-        firstName: populatedStudent.firstName,
-        lastName: populatedStudent.lastName,
-        middleName: populatedStudent.middleName,
-        birthDate: populatedStudent.birthDate?.toISOString().split('T')[0],
-        department: populatedStudent.department,
-        group: populatedStudent.group,
-        email: populatedStudent.user?.email || populatedStudent.email,
-        admissionYear: populatedStudent.admissionYear,
-        avatar: populatedStudent.avatar
-      }
+        first_name: populatedStudent.first_name,
+        last_name: populatedStudent.last_name,
+        middle_name: populatedStudent.middle_name,
+        birth_date: populatedStudent.birth_date?.toISOString().split('T')[0] || '',
+        department_id: populatedStudent.department_id,
+        group_id: populatedStudent.group_id,
+        login: populatedStudent.login,
+        email: populatedStudent.email,
+        admission_year: populatedStudent.admission_year,
+        avatar: populatedStudent.avatar,
+      },
     });
-
   } catch (error) {
     console.error('Ошибка обновления профиля:', error);
 
     if (req.file) {
       try {
-        const filePath = path.join(__dirname, '../../uploads/', req.file.filename);
+        const filePath = path.join(__dirname, '../../Uploads/', req.file.filename);
         if (fs.existsSync(filePath)) {
           await unlinkAsync(filePath);
         }
@@ -167,17 +433,42 @@ const updateProfile = async (req, res) => {
     }
 
     if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => err.message);
+      const errors = Object.values(error.errors).map((err) => err.message);
       return res.status(400).json({
         success: false,
         message: 'Ошибка валидации данных',
-        errors
+        errors,
       });
     }
 
-    res.status(500).json({
+    if (error.code === 121) {
+      const validationErrors = error.errInfo?.details?.schemaRulesNotSatisfied?.map(
+        (rule) => {
+          if (rule.missingProperties) {
+            return `Отсутствуют обязательные поля: ${rule.missingProperties.join(', ')}`;
+          }
+          if (rule.propertiesNotSatisfied) {
+            return rule.propertiesNotSatisfied.map((prop) => {
+              return `Поле ${prop.propertyName}: ${prop.description}`;
+            }).join('; ');
+          }
+          return `Неизвестная ошибка валидации: ${JSON.stringify(rule)}`;
+        }
+      ) || ['Неизвестная ошибка валидации'];
+
+      console.error('Validation errors:', validationErrors);
+
+      return res.status(400).json({
+        success: false,
+        message: 'Данные профиля не соответствуют требованиям',
+        errors: validationErrors,
+      });
+    }
+
+    res.status(400).json({
       success: false,
-      message: 'Ошибка сервера при обновлении профиля'
+      message: 'Ошибка сервера при обновлении профиля',
+      error: error.message,
     });
   }
 };
@@ -187,15 +478,15 @@ const updateAvatar = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: 'Файл не был загружен'
+        message: 'Файл не был загружен',
       });
     }
 
-    const student = await Student.findOne({ user: req.user.id });
+    const student = await Student.findById(req.user.id);
     if (!student) {
       return res.status(404).json({
         success: false,
-        message: 'Профиль студента не найден'
+        message: 'Профиль студента не найден',
       });
     }
 
@@ -216,13 +507,13 @@ const updateAvatar = async (req, res) => {
     res.json({
       success: true,
       message: 'Аватар успешно обновлен',
-      avatar: student.avatar
+      avatar: student.avatar,
     });
   } catch (error) {
     console.error('Ошибка обновления аватара:', error);
     res.status(500).json({
       success: false,
-      message: 'Ошибка сервера при обновлении аватара'
+      message: 'Ошибка сервера при обновлении аватара',
     });
   }
 };
@@ -234,7 +525,7 @@ const getDepartments = async (req, res) => {
   } catch (err) {
     res.status(500).json({
       message: 'Ошибка загрузки отделений',
-      error: err.message
+      error: err.message,
     });
   }
 };
@@ -242,23 +533,24 @@ const getDepartments = async (req, res) => {
 const getGroupsByDepartment = async (req, res) => {
   try {
     const { department_id } = req.query;
-    if (!department_id) {
-      return res.status(400).json({ message: 'Не указано отделение' });
+    if (!department_id || !mongoose.isValidObjectId(department_id)) {
+      return res.status(400).json({ message: 'Не указано или неверное отделение' });
     }
     const groups = await Group.find({ department_id });
     res.json(groups);
   } catch (err) {
     res.status(500).json({
       message: 'Ошибка загрузки групп',
-      error: err.message
+      error: err.message,
     });
   }
 };
 
 module.exports = {
   getProfile,
+  createProfile,
   updateProfile,
   updateAvatar,
   getDepartments,
-  getGroupsByDepartment
-};  
+  getGroupsByDepartment,
+};
