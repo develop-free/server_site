@@ -11,7 +11,6 @@ const unlinkAsync = promisify(fs.unlink);
 
 const getProfile = async (req, res) => {
   try {
-    console.log('req.user:', req.user);
     if (!req.user?.id || !mongoose.isValidObjectId(req.user.id)) {
       return res.status(401).json({
         success: false,
@@ -22,8 +21,6 @@ const getProfile = async (req, res) => {
     let student = await Student.findOne({ user: req.user.id })
       .populate('department_id', 'name _id')
       .populate('group_id', 'name _id');
-
-    console.log('Найден студент:', student);
 
     const user = await User.findById(req.user.id).select('email login');
     if (!user) {
@@ -50,7 +47,6 @@ const getProfile = async (req, res) => {
           admission_year: new Date().getFullYear(),
         },
       };
-      console.log('Ответ для нового пользователя:', response);
       return res.json(response);
     }
 
@@ -70,7 +66,6 @@ const getProfile = async (req, res) => {
         avatar: student.avatar || null,
       },
     };
-    console.log('Ответ для существующего пользователя:', response);
     res.json(response);
   } catch (error) {
     console.error('Ошибка при получении профиля:', error);
@@ -83,9 +78,6 @@ const getProfile = async (req, res) => {
 
 const createProfile = async (req, res) => {
   try {
-    console.log('req.user:', req.user);
-    console.log('req.body:', req.body);
-
     if (!req.user?.id || !mongoose.isValidObjectId(req.user.id)) {
       return res.status(401).json({
         success: false,
@@ -105,7 +97,6 @@ const createProfile = async (req, res) => {
       admission_year,
     } = req.body;
 
-    // Проверка валидности ObjectId
     if (!mongoose.isValidObjectId(department_id)) {
       return res.status(400).json({
         success: false,
@@ -119,7 +110,6 @@ const createProfile = async (req, res) => {
       });
     }
 
-    // Проверка существования отделения и группы
     const deptExists = await Department.exists({ _id: department_id });
     if (!deptExists) {
       return res.status(400).json({
@@ -136,7 +126,6 @@ const createProfile = async (req, res) => {
       });
     }
 
-    // Проверка на существующий профиль по user
     const existingStudent = await Student.findOne({ user: req.user.id });
     if (existingStudent) {
       return res.status(400).json({
@@ -145,7 +134,6 @@ const createProfile = async (req, res) => {
       });
     }
 
-    // Проверка уникальности логина и email
     const loginExists = await User.findOne({ login, _id: { $ne: req.user.id } });
     if (loginExists) {
       return res.status(400).json({
@@ -163,7 +151,7 @@ const createProfile = async (req, res) => {
     }
 
     const studentData = {
-      user: req.user.id, // Связываем с аутентифицированным пользователем
+      user: req.user.id,
       first_name,
       last_name,
       middle_name: middle_name || '',
@@ -174,8 +162,6 @@ const createProfile = async (req, res) => {
       email,
       admission_year: parseInt(admission_year, 10),
     };
-
-    console.log('Данные студента для сохранения:', studentData);
 
     let student = new Student(studentData);
 
@@ -251,9 +237,6 @@ const createProfile = async (req, res) => {
 
 const updateProfile = async (req, res) => {
   try {
-    console.log('req.user:', req.user);
-    console.log('req.body:', req.body);
-
     if (!req.user?.id || !mongoose.isValidObjectId(req.user.id)) {
       return res.status(401).json({
         success: false,
@@ -283,7 +266,7 @@ const updateProfile = async (req, res) => {
     }
     if (!mongoose.isValidObjectId(group_id)) {
       return res.status(400).json({
- PSC: false,
+        success: false,
         message: 'Неверный формат идентификатора группы',
       });
     }
