@@ -27,10 +27,10 @@ const userSchema = new Schema({
     default: 'user',
     enum: ['user', 'admin']
   },
-  refreshToken: {
-    type: String,
-    select: false
-  },
+  refreshTokens: [{
+    token: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now },
+  }],
   createdAt: { 
     type: Date, 
     default: Date.now 

@@ -4,7 +4,6 @@ const User = require('../models/User');
 const config = require('../config/config');
 const { generateTokens } = require('../utils/jwt');
 
-// Контроллеры
 exports.register = async (req, res) => {
   try {
     const { login, email, password } = req.body;
@@ -20,12 +19,13 @@ exports.register = async (req, res) => {
       login,
       email,
       password: await bcrypt.hash(password, 12),
-      role: 'user'
+      role: 'user',
+      refreshTokens: [],
     });
 
     const { accessToken, refreshToken } = generateTokens(user);
 
-    user.refreshToken = refreshToken;
+    user.refreshTokens.push({ token: refreshToken });
     await user.save();
 
     res.cookie('refreshToken', refreshToken, {
@@ -37,6 +37,8 @@ exports.register = async (req, res) => {
     res.status(201).json({
       success: true,
       accessToken,
+      login: user.login,
+      email: user.email,
       role: user.role
     });
   } catch (error) {
@@ -52,7 +54,7 @@ exports.login = async (req, res) => {
     const { login, password } = req.body;
     const user = await User.findOne({ 
       $or: [{ email: login }, { login }] 
-    }).select('+password +refreshToken');
+    }).select('+password +refreshTokens');
 
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({
@@ -62,7 +64,7 @@ exports.login = async (req, res) => {
     }
 
     const { accessToken, refreshToken } = generateTokens(user);
-    user.refreshToken = refreshToken;
+    user.refreshTokens.push({ token: refreshToken });
     await user.save();
 
     res.cookie('refreshToken', refreshToken, {
@@ -74,6 +76,8 @@ exports.login = async (req, res) => {
     res.json({
       success: true,
       accessToken,
+      login: user.login,
+      email: user.email,
       role: user.role
     });
   } catch (error) {
@@ -94,7 +98,7 @@ exports.refreshToken = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ refreshToken }).select('+refreshToken');
+    const user = await User.findOne({ 'refreshTokens.token': refreshToken }).select('+refreshTokens');
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -112,7 +116,8 @@ exports.refreshToken = async (req, res) => {
     }
 
     const { accessToken, refreshToken: newRefreshToken } = generateTokens(user);
-    user.refreshToken = newRefreshToken;
+    user.refreshTokens = user.refreshTokens.filter(t => t.token !== refreshToken);
+    user.refreshTokens.push({ token: newRefreshToken });
     await user.save();
 
     res.cookie('refreshToken', newRefreshToken, {
@@ -135,9 +140,10 @@ exports.refreshToken = async (req, res) => {
 
 exports.logout = async (req, res) => {
   try {
+    const refreshToken = req.cookies?.refreshToken;
     const user = await User.findById(req.user.id);
-    if (user) {
-      user.refreshToken = null;
+    if (user && refreshToken) {
+      user.refreshTokens = user.refreshTokens.filter(t => t.token !== refreshToken);
       await user.save();
     }
     res.clearCookie('refreshToken');
@@ -153,11 +159,36 @@ exports.logout = async (req, res) => {
   }
 };
 
+exports.logoutAll = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (user) {
+      user.refreshTokens = [];
+      await user.save();
+    }
+    res.clearCookie('refreshToken');
+    res.json({
+      success: true,
+      message: 'Выход из всех сессий выполнен'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Ошибка выхода из всех сессий'
+    });
+  }
+};
+
 exports.checkAuth = async (req, res) => {
   try {
     res.json({
       success: true,
-      user: req.user
+      user: {
+        id: req.user.id,
+        login: req.user.login,
+        email: req.user.email,
+        role: req.user.role
+      }
     });
   } catch (error) {
     res.status(500).json({
