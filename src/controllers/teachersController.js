@@ -5,14 +5,20 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 
-// Настройка Nodemailer с использованием пароля приложения
+// Проверка переменных окружения
+if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASS) {
+  throw new Error('Отсутствуют учетные данные для отправки email (EMAIL_USER или EMAIL_APP_PASS)');
+}
+
+// Настройка Nodemailer
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER, // например, 'CyberCats.kpk@gmail.com'
-    pass: process.env.EMAIL_APP_PASS, // Используйте пароль приложения Gmail, а не обычный пароль
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_APP_PASS,
   },
 });
+
 
 // Генерация случайного логина
 const generateLogin = () => {
@@ -25,7 +31,7 @@ const generatePassword = () => {
   return crypto.randomBytes(6).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
 };
 
-// Отправка учетных данных на email
+// Отправка учетных данных на email преподавателя
 const sendTeacherCredentials = async (email, login, password) => {
   const mailOptions = {
     from: process.env.EMAIL_USER,
@@ -33,13 +39,29 @@ const sendTeacherCredentials = async (email, login, password) => {
     subject: 'Ваши учетные данные для входа',
     text: `Ваш логин: ${login}\nВаш пароль: ${password}\nПожалуйста, измените пароль после первого входа.`,
   };
-
   try {
     await transporter.sendMail(mailOptions);
     return true;
   } catch (error) {
-    console.error('Ошибка отправки email:', error);
-    throw new Error('Не удалось отправить учетные данные на email: ' + error.message);
+    console.error(`Ошибка отправки email на ${email}:`, error);
+    return false;
+  }
+};
+
+// Отправка уведомления администратору о добавлении преподавателя
+const sendAdminNotification = async (teacherData) => {
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: process.env.EMAIL_USER,
+    subject: 'Новый преподаватель добавлен',
+    text: `Добавлен новый преподаватель:\nФИО: ${teacherData.last_name} ${teacherData.first_name} ${teacherData.middle_name || ''}\nДолжность: ${teacherData.position}\nEmail: ${teacherData.email}`,
+  };
+  try {
+    await transporter.sendMail(mailOptions);
+    return true;
+  } catch (error) {
+    console.error('Ошибка отправки уведомления администратору:', error);
+    return false;
   }
 };
 
@@ -58,15 +80,13 @@ const fetchTeachers = async (req, res) => {
     }));
     res.json(formattedTeachers);
   } catch (error) {
-    console.error('Ошибка получения преподавателей:', error);
+    console.error('Ошибка в fetchTeachers:', error);
     res.status(500).json({ error: 'Ошибка получения преподавателей: ' + error.message });
   }
 };
 
 // Создание преподавателя
 const createTeacher = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
     const { last_name, first_name, middle_name, position, email, is_teacher } = req.body;
 
@@ -79,7 +99,7 @@ const createTeacher = async (req, res) => {
     }
 
     // Проверка, существует ли пользователь с таким email
-    const existingUser = await User.findOne({ email }).session(session);
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
       throw new Error('Пользователь с таким email уже существует');
     }
@@ -92,10 +112,10 @@ const createTeacher = async (req, res) => {
     const user = new User({
       login,
       email,
-      password: await bcrypt.hash(password, 10),
+      password: await bcrypt.hash(password, 8), // Уменьшено до 8 раундов
       role: is_teacher ? 'teacher' : 'user',
     });
-    await user.save({ session });
+    await user.save();
 
     // Создание преподавателя
     const teacher = new Teacher({
@@ -105,12 +125,16 @@ const createTeacher = async (req, res) => {
       middle_name,
       position,
     });
-    await teacher.save({ session });
+    await teacher.save();
 
-    // Отправка учетных данных
-    await sendTeacherCredentials(email, login, password);
+    // Асинхронная отправка писем
+    setImmediate(async () => {
+      await Promise.all([
+        sendTeacherCredentials(email, login, password),
+        sendAdminNotification({ last_name, first_name, middle_name, position, email }),
+      ]);
+    });
 
-    await session.commitTransaction();
     res.status(201).json({
       _id: teacher._id,
       last_name,
@@ -121,17 +145,13 @@ const createTeacher = async (req, res) => {
       is_teacher,
     });
   } catch (error) {
-    await session.abortTransaction();
+    console.error('Ошибка в createTeacher:', error);
     res.status(400).json({ error: error.message });
-  } finally {
-    session.endSession();
   }
 };
 
 // Обновление преподавателя
 const updateTeacher = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
     const { id } = req.params;
     const { last_name, first_name, middle_name, position, email, is_teacher } = req.body;
@@ -145,13 +165,13 @@ const updateTeacher = async (req, res) => {
     }
 
     // Проверка, существует ли другой пользователь с таким email
-    const existingUser = await User.findOne({ email, _id: { $ne: id } }).session(session);
+    const existingUser = await User.findOne({ email, _id: { $ne: id } });
     if (existingUser) {
       throw new Error('Пользователь с таким email уже существует');
     }
 
     // Обновление преподавателя
-    const teacher = await Teacher.findById(id).session(session);
+    const teacher = await Teacher.findById(id);
     if (!teacher) {
       throw new Error('Преподаватель не найден');
     }
@@ -160,19 +180,18 @@ const updateTeacher = async (req, res) => {
     teacher.first_name = first_name;
     teacher.middle_name = middle_name;
     teacher.position = position;
-    await teacher.save({ session });
+    await teacher.save();
 
     // Обновление пользователя
-    const user = await User.findById(teacher.user).session(session);
+    const user = await User.findById(teacher.user);
     if (!user) {
       throw new Error('Пользователь не найден');
     }
 
     user.email = email;
     user.role = is_teacher ? 'teacher' : 'user';
-    await user.save({ session });
+    await user.save();
 
-    await session.commitTransaction();
     res.json({
       _id: teacher._id,
       last_name,
@@ -183,36 +202,29 @@ const updateTeacher = async (req, res) => {
       is_teacher,
     });
   } catch (error) {
-    await session.abortTransaction();
+    console.error('Ошибка в updateTeacher:', error);
     res.status(400).json({ error: error.message });
-  } finally {
-    session.endSession();
   }
 };
 
 // Удаление преподавателя
 const deleteTeacher = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
     const { id } = req.params;
-    const teacher = await Teacher.findById(id).session(session);
+    const teacher = await Teacher.findById(id);
     if (!teacher) {
       throw new Error('Преподаватель не найден');
     }
 
     // Удаление пользователя
-    await User.findByIdAndDelete(teacher.user).session(session);
+    await User.findByIdAndDelete(teacher.user);
     // Удаление преподавателя
-    await Teacher.findByIdAndDelete(id).session(session);
+    await Teacher.findByIdAndDelete(id);
 
-    await session.commitTransaction();
     res.status(204).send();
   } catch (error) {
-    await session.abortTransaction();
+    console.error('Ошибка в deleteTeacher:', error);
     res.status(400).json({ error: error.message });
-  } finally {
-    session.endSession();
   }
 };
 

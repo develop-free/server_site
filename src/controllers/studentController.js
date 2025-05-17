@@ -1,3 +1,5 @@
+// studentController.js
+const mongoose = require('mongoose');
 const Student = require('../models/Student');
 const User = require('../models/User');
 const Department = require('../models/Department');
@@ -5,13 +7,14 @@ const Group = require('../models/Group');
 const path = require('path');
 const fs = require('fs');
 const { promisify } = require('util');
-const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const unlinkAsync = promisify(fs.unlink);
 
 const getProfile = async (req, res) => {
   try {
+    console.log('Попытка получения профиля, req.user:', req.user);
     if (!req.user?.id || !mongoose.isValidObjectId(req.user.id)) {
+      console.warn('Отсутствует req.user или неверный ID:', req.user);
       return res.status(401).json({
         success: false,
         message: 'Пользователь не аутентифицирован или неверный идентификатор',
@@ -24,6 +27,7 @@ const getProfile = async (req, res) => {
 
     const user = await User.findById(req.user.id).select('email login');
     if (!user) {
+      console.warn('Пользователь не найден в базе:', req.user.id);
       return res.status(404).json({
         success: false,
         message: 'Пользователь не найден',
@@ -31,6 +35,7 @@ const getProfile = async (req, res) => {
     }
 
     if (!student) {
+      console.log('Профиль студента не найден, возвращается новый пользователь');
       const response = {
         success: true,
         isNewUser: true,
@@ -47,8 +52,14 @@ const getProfile = async (req, res) => {
           admission_year: new Date().getFullYear(),
         },
       };
+      res.set('Cache-Control', 'no-cache');
       return res.json(response);
     }
+
+    console.log('Профиль найден:', {
+      studentId: student._id,
+      avatar: student.avatar,
+    });
 
     const response = {
       success: true,
@@ -66,18 +77,26 @@ const getProfile = async (req, res) => {
         avatar: student.avatar || null,
       },
     };
+    res.set('Cache-Control', 'no-cache');
     res.json(response);
   } catch (error) {
-    console.error('Ошибка при получении профиля:', error);
+    console.error('Ошибка при получении профиля:', {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.id,
+    });
+    res.set('Cache-Control', 'no-cache');
     res.status(500).json({
       success: false,
       message: 'Внутренняя ошибка сервера',
+      error: error.message,
     });
   }
 };
 
 const createProfile = async (req, res) => {
   try {
+    console.log('Создание профиля, req.user:', req.user);
     if (!req.user?.id || !mongoose.isValidObjectId(req.user.id)) {
       return res.status(401).json({
         success: false,
@@ -96,6 +115,11 @@ const createProfile = async (req, res) => {
       email,
       admission_year,
     } = req.body;
+
+    console.log('Создание профиля, входные данные:', {
+      body: req.body,
+      file: req.file ? { filename: req.file.filename, path: req.file.path } : null,
+    });
 
     if (!mongoose.isValidObjectId(department_id)) {
       return res.status(400).json({
@@ -166,7 +190,11 @@ const createProfile = async (req, res) => {
     let student = new Student(studentData);
 
     if (req.file) {
-      student.avatar = `/uploads/${req.file.filename}`;
+      const avatarPath = `/Uploads/${req.file.filename}`;
+      const filePath = path.join(__dirname, '../../Uploads', req.file.filename);
+      console.log('Сохранение аватара:', { avatarPath, fileExists: fs.existsSync(filePath) });
+      fs.chmodSync(filePath, 0o644);
+      student.avatar = avatarPath;
     }
 
     await student.save();
@@ -179,6 +207,9 @@ const createProfile = async (req, res) => {
     const populatedStudent = await Student.findById(student._id)
       .populate('department_id group_id');
 
+    console.log('Профиль успешно создан:', populatedStudent);
+
+    res.set('Cache-Control', 'no-cache');
     res.json({
       success: true,
       message: 'Профиль успешно создан',
@@ -196,13 +227,18 @@ const createProfile = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Ошибка при создании профиля:', error);
+    console.error('Ошибка при создании профиля:', {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.id,
+    });
 
     if (req.file) {
       try {
         const filePath = path.join(__dirname, '../../Uploads/', req.file.filename);
         if (fs.existsSync(filePath)) {
           await unlinkAsync(filePath);
+          console.log('Загруженный файл удален:', filePath);
         }
       } catch (err) {
         console.error('Ошибка при удалении загруженного файла:', err);
@@ -227,6 +263,7 @@ const createProfile = async (req, res) => {
       });
     }
 
+    res.set('Cache-Control', 'no-cache');
     res.status(500).json({
       success: false,
       message: 'Ошибка сервера при создании профиля',
@@ -237,12 +274,18 @@ const createProfile = async (req, res) => {
 
 const updateProfile = async (req, res) => {
   try {
+    console.log('Обновление профиля, req.user:', req.user);
     if (!req.user?.id || !mongoose.isValidObjectId(req.user.id)) {
       return res.status(401).json({
         success: false,
         message: 'Пользователь не аутентифицирован или неверный идентификатор',
       });
     }
+
+    console.log('Обновление профиля, входные данные:', {
+      body: req.body,
+      file: req.file ? { filename: req.file.filename, path: req.file.path } : null,
+    });
 
     const {
       first_name,
@@ -357,12 +400,17 @@ const updateProfile = async (req, res) => {
           const oldPath = path.join(__dirname, '../../', student.avatar);
           if (fs.existsSync(oldPath)) {
             await unlinkAsync(oldPath);
+            console.log('Старый аватар удален:', oldPath);
           }
         } catch (err) {
           console.error('Ошибка при удалении старого аватара:', err);
         }
       }
-      student.avatar = `/uploads/${req.file.filename}`;
+      const avatarPath = `/Uploads/${req.file.filename}`;
+      const filePath = path.join(__dirname, '../../Uploads', req.file.filename);
+      console.log('Сохранение нового аватара:', { avatarPath, fileExists: fs.existsSync(filePath) });
+      fs.chmodSync(filePath, 0o644);
+      student.avatar = avatarPath;
     }
 
     await student.save();
@@ -370,6 +418,9 @@ const updateProfile = async (req, res) => {
     const populatedStudent = await Student.findById(student._id)
       .populate('department_id group_id');
 
+    console.log('Профиль успешно обновлен:', populatedStudent);
+
+    res.set('Cache-Control', 'no-cache');
     res.json({
       success: true,
       message: 'Профиль успешно обновлён',
@@ -387,13 +438,18 @@ const updateProfile = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Ошибка при обновлении профиля:', error);
+    console.error('Ошибка при обновлении профиля:', {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.id,
+    });
 
     if (req.file) {
       try {
         const filePath = path.join(__dirname, '../../Uploads/', req.file.filename);
         if (fs.existsSync(filePath)) {
           await unlinkAsync(filePath);
+          console.log('Загруженный файл удален:', filePath);
         }
       } catch (err) {
         console.error('Ошибка при удалении загруженного файла:', err);
@@ -409,6 +465,7 @@ const updateProfile = async (req, res) => {
       });
     }
 
+    res.set('Cache-Control', 'no-cache');
     res.status(500).json({
       success: false,
       message: 'Ошибка сервера при обновлении профиля',
@@ -419,14 +476,20 @@ const updateProfile = async (req, res) => {
 
 const updateAvatar = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({
+    console.log('Обновление аватара, req.user:', req.user);
+    if (!req.user?.id || !mongoose.isValidObjectId(req.user.id)) {
+      return res.status(401).json({
         success: false,
-        message: 'Файл не был загружен',
+        message: 'Пользователь не аутентифицирован или неверный идентификатор',
       });
     }
 
-    const student = await Student.findById(req.user.id);
+    console.log('Обновление аватара, входные данные:', {
+      removeAvatar: req.body.removeAvatar,
+      file: req.file ? { filename: req.file.filename, path: req.file.path } : null,
+    });
+
+    const student = await Student.findOne({ user: req.user.id });
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -434,30 +497,79 @@ const updateAvatar = async (req, res) => {
       });
     }
 
-    if (student.avatar) {
+    if (req.body.removeAvatar === 'true') {
+      if (student.avatar) {
+        try {
+          const oldPath = path.join(__dirname, '../../', student.avatar);
+          if (fs.existsSync(oldPath)) {
+            await unlinkAsync(oldPath);
+            console.log('Аватар удален:', oldPath);
+          }
+        } catch (err) {
+          console.error('Ошибка удаления аватара:', err);
+        }
+      }
+      student.avatar = null;
+    } else if (req.file) {
+      if (student.avatar) {
+        try {
+          const oldPath = path.join(__dirname, '../../', student.avatar);
+          if (fs.existsSync(oldPath)) {
+            await unlinkAsync(oldPath);
+            console.log('Старый аватар удален:', oldPath);
+          }
+        } catch (err) {
+          console.error('Ошибка удаления старого аватара:', err);
+        }
+      }
+      const avatarPath = `/Uploads/${req.file.filename}`;
+      const filePath = path.join(__dirname, '../../Uploads', req.file.filename);
+      console.log('Сохранение нового аватара:', { avatarPath, fileExists: fs.existsSync(filePath) });
+      fs.chmodSync(filePath, 0o644);
+      student.avatar = avatarPath;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Файл не был загружен или не указано действие удаления',
+      });
+    }
+
+    await student.save();
+
+    console.log('Аватар успешно обновлен:', { avatar: student.avatar });
+
+    res.set('Cache-Control', 'no-cache');
+    res.json({
+      success: true,
+      message: req.body.removeAvatar === 'true' ? 'Аватар успешно удалён' : 'Аватар успешно обновлён',
+      data: {
+        avatar: student.avatar,
+      },
+    });
+  } catch (error) {
+    console.error('Ошибка при обновлении аватара:', {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.id,
+    });
+
+    if (req.file) {
       try {
-        const oldPath = path.join(__dirname, '../../', student.avatar);
-        if (fs.existsSync(oldPath)) {
-          await unlinkAsync(oldPath);
+        const filePath = path.join(__dirname, '../../Uploads/', req.file.filename);
+        if (fs.existsSync(filePath)) {
+          await unlinkAsync(filePath);
+          console.log('Загруженный файл удален:', filePath);
         }
       } catch (err) {
-        console.error('Ошибка удаления старого аватара:', err);
+        console.error('Ошибка при удалении загруженного файла:', err);
       }
     }
 
-    student.avatar = `/uploads/${req.file.filename}`;
-    await student.save();
-
-    res.json({
-      success: true,
-      message: 'Аватар успешно обновлен',
-      avatar: student.avatar,
-    });
-  } catch (error) {
-    console.error('Ошибка обновления аватара:', error);
+    res.set('Cache-Control', 'no-cache');
     res.status(500).json({
       success: false,
       message: 'Ошибка сервера при обновлении аватара',
+      error: error.message,
     });
   }
 };
@@ -465,8 +577,14 @@ const updateAvatar = async (req, res) => {
 const getDepartments = async (req, res) => {
   try {
     const departments = await Department.find();
+    res.set('Cache-Control', 'no-cache');
     res.json(departments);
   } catch (err) {
+    console.error('Ошибка при получении отделений:', {
+      error: err.message,
+      stack: err.stack,
+    });
+    res.set('Cache-Control', 'no-cache');
     res.status(500).json({
       message: 'Ошибка загрузки отделений',
       error: err.message,
@@ -481,8 +599,14 @@ const getGroupsByDepartment = async (req, res) => {
       return res.status(400).json({ message: 'Не указано или неверное отделение' });
     }
     const groups = await Group.find({ department_id });
+    res.set('Cache-Control', 'no-cache');
     res.json(groups);
   } catch (err) {
+    console.error('Ошибка при получении групп:', {
+      error: err.message,
+      stack: err.stack,
+    });
+    res.set('Cache-Control', 'no-cache');
     res.status(500).json({
       message: 'Ошибка загрузки групп',
       error: err.message,

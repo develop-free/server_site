@@ -2,21 +2,26 @@ const jwt = require('jsonwebtoken');
 const config = require('../config/config');
 
 const generateTokens = (user) => {
-  const payload = { id: user._id, role: user.role };
-  
-  const accessToken = jwt.sign(
-    payload,
-    config.jwt.secret,
-    { expiresIn: config.jwt.accessExpiration || '1h' }
-  );
-  
-  const refreshToken = jwt.sign(
-    payload,
-    config.jwt.refreshSecret,
-    { expiresIn: config.jwt.refreshExpiration || '15d' }
-  );
+  try {
+    const payload = { id: user._id, role: user.role };
+    
+    const accessToken = jwt.sign(
+      payload,
+      config.jwt.secret,
+      { expiresIn: config.jwt.accessExpiration || '1h' }
+    );
+    
+    const refreshToken = jwt.sign(
+      payload,
+      config.jwt.refreshSecret,
+      { expiresIn: config.jwt.refreshExpiration || '15d' }
+    );
 
-  return { accessToken, refreshToken };
+    return { accessToken, refreshToken };
+  } catch (error) {
+    console.error('Ошибка генерации токенов:', error);
+    throw new Error('Не удалось сгенерировать токены');
+  }
 };
 
 const verifyToken = (token, secret) => {
@@ -31,7 +36,8 @@ const verifyToken = (token, secret) => {
     
     return decoded;
   } catch (error) {
-    throw new Error('Invalid token');
+    console.error('Ошибка верификации токена:', error);
+    throw new Error('Недействительный токен');
   }
 };
 

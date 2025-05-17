@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const path = require('path');
 const config = require('./config/config');
 const userRoutes = require('./routes/userRoutes');
 const studentRoutes = require('./routes/studentRoutes');
@@ -46,6 +47,18 @@ app.use((err, req, res, next) => {
     message: 'Внутренняя ошибка сервера'
   });
 });
+
+app.set('etag', false);
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  next();
+});
+
+app.use('/Uploads', express.static(path.join(__dirname, 'Uploads'), {
+  setHeaders: (res) => {
+    res.set('Cache-Control', 'no-cache');
+  },
+}));
 
 // Запуск сервера
 app.listen(PORT, () => {

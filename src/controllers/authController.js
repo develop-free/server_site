@@ -8,10 +8,17 @@ exports.register = async (req, res) => {
   try {
     const { login, email, password } = req.body;
 
-    if (await User.findOne({ $or: [{ email }, { login }] })) {
-      return res.status(400).json({ 
+    if (!login || !email || !password) {
+      return res.status(400).json({
         success: false,
-        message: 'Email или логин уже используется' 
+        message: 'Все поля (логин, email, пароль) обязательны'
+      });
+    }
+
+    if (await User.findOne({ $or: [{ email }, { login }] })) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email или логин уже используется'
       });
     }
 
@@ -20,18 +27,19 @@ exports.register = async (req, res) => {
       email,
       password: await bcrypt.hash(password, 12),
       role: 'user',
-      refreshTokens: [],
+      refreshToken: null,
     });
 
     const { accessToken, refreshToken } = generateTokens(user);
 
-    user.refreshTokens.push({ token: refreshToken });
+    user.refreshToken = refreshToken;
     await user.save();
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      secure: process.env.NODE_ENV === 'production'
+      maxAge: 15 * 24 * 60 * 60 * 1000,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
     });
 
     res.status(201).json({
@@ -42,9 +50,10 @@ exports.register = async (req, res) => {
       role: user.role
     });
   } catch (error) {
+    console.error('Ошибка регистрации:', error);
     res.status(500).json({
       success: false,
-      message: 'Ошибка регистрации'
+      message: 'Ошибка регистрации: ' + error.message
     });
   }
 };
@@ -52,25 +61,42 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { login, password } = req.body;
-    const user = await User.findOne({ 
-      $or: [{ email: login }, { login }] 
-    }).select('+password +refreshTokens');
 
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    if (!login || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Логин и пароль обязательны'
+      });
+    }
+
+    const user = await User.findOne({
+      $or: [{ email: login }, { login }]
+    }).select('+password +refreshToken');
+
+    if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Неверные учетные данные'
+        message: 'Пользователь не найден'
+      });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Неверный пароль'
       });
     }
 
     const { accessToken, refreshToken } = generateTokens(user);
-    user.refreshTokens.push({ token: refreshToken });
+    user.refreshToken = refreshToken;
     await user.save();
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      secure: process.env.NODE_ENV === 'production'
+      maxAge: 15 * 24 * 60 * 60 * 1000,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
     });
 
     res.json({
@@ -81,9 +107,10 @@ exports.login = async (req, res) => {
       role: user.role
     });
   } catch (error) {
+    console.error('Ошибка авторизации:', error);
     res.status(500).json({
       success: false,
-      message: 'Ошибка авторизации'
+      message: 'Ошибка авторизации: ' + error.message
     });
   }
 };
@@ -91,6 +118,7 @@ exports.login = async (req, res) => {
 exports.refreshToken = async (req, res) => {
   try {
     const refreshToken = req.cookies?.refreshToken;
+
     if (!refreshToken) {
       return res.status(401).json({
         success: false,
@@ -98,7 +126,7 @@ exports.refreshToken = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ 'refreshTokens.token': refreshToken }).select('+refreshTokens');
+    const user = await User.findOne({ refreshToken }).select('+refreshToken');
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -109,6 +137,8 @@ exports.refreshToken = async (req, res) => {
     try {
       jwt.verify(refreshToken, config.jwt.refreshSecret);
     } catch (error) {
+      user.refreshToken = null;
+      await user.save();
       return res.status(401).json({
         success: false,
         message: 'Недействительный refresh token'
@@ -116,14 +146,14 @@ exports.refreshToken = async (req, res) => {
     }
 
     const { accessToken, refreshToken: newRefreshToken } = generateTokens(user);
-    user.refreshTokens = user.refreshTokens.filter(t => t.token !== refreshToken);
-    user.refreshTokens.push({ token: newRefreshToken });
+    user.refreshToken = newRefreshToken;
     await user.save();
 
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      secure: process.env.NODE_ENV === 'production'
+      maxAge: 15 * 24 * 60 * 60 * 1000,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
     });
 
     res.json({
@@ -131,9 +161,10 @@ exports.refreshToken = async (req, res) => {
       accessToken
     });
   } catch (error) {
+    console.error('Ошибка обновления токена:', error);
     res.status(500).json({
       success: false,
-      message: 'Ошибка обновления токена'
+      message: 'Ошибка обновления токена: ' + error.message
     });
   }
 };
@@ -143,7 +174,7 @@ exports.logout = async (req, res) => {
     const refreshToken = req.cookies?.refreshToken;
     const user = await User.findById(req.user.id);
     if (user && refreshToken) {
-      user.refreshTokens = user.refreshTokens.filter(t => t.token !== refreshToken);
+      user.refreshToken = null;
       await user.save();
     }
     res.clearCookie('refreshToken');
@@ -152,9 +183,10 @@ exports.logout = async (req, res) => {
       message: 'Выход выполнен'
     });
   } catch (error) {
+    console.error('Ошибка выхода:', error);
     res.status(500).json({
       success: false,
-      message: 'Ошибка выхода'
+      message: 'Ошибка выхода: ' + error.message
     });
   }
 };
@@ -163,7 +195,7 @@ exports.logoutAll = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (user) {
-      user.refreshTokens = [];
+      user.refreshToken = null;
       await user.save();
     }
     res.clearCookie('refreshToken');
@@ -172,9 +204,10 @@ exports.logoutAll = async (req, res) => {
       message: 'Выход из всех сессий выполнен'
     });
   } catch (error) {
+    console.error('Ошибка выхода из всех сессий:', error);
     res.status(500).json({
       success: false,
-      message: 'Ошибка выхода из всех сессий'
+      message: 'Ошибка выхода из всех сессий: ' + error.message
     });
   }
 };
@@ -191,9 +224,10 @@ exports.checkAuth = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Ошибка проверки авторизации:', error);
     res.status(500).json({
       success: false,
-      message: 'Ошибка проверки авторизации'
+      message: 'Ошибка проверки авторизации: ' + error.message
     });
   }
 };

@@ -1,39 +1,43 @@
+// uploadMiddleware.js
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Создаем папку uploads, если её нет
-const uploadDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Настройка хранилища
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadDir);
+    const uploadPath = path.join(__dirname, '../../Uploads');
+    try {
+      fs.mkdirSync(uploadPath, { recursive: true });
+      console.log('Папка Uploads создана или существует:', uploadPath);
+      cb(null, uploadPath);
+    } catch (err) {
+      console.error('Ошибка создания папки Uploads:', err);
+      cb(err);
+    }
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalName));
+    const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+    const ext = path.extname(file.originalname);
+    console.log('Генерация имени файла:', { filename: `${uniqueSuffix}${ext}` });
+    cb(null, `${uniqueSuffix}${ext}`);
   },
 });
 
-// Фильтр файлов
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) {
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+  if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Разрешены только изображения!'), false);
+    cb(new Error('Недопустимый тип файла. Допускаются только JPEG, PNG или GIF.'), false);
   }
 };
 
-// Инициализация multer
 const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
+  },
 });
 
-// Экспортируем готовый middleware
 module.exports = upload;
