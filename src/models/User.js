@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
 const { Schema } = mongoose;
 
 const userSchema = new Schema({
@@ -25,7 +26,7 @@ const userSchema = new Schema({
   role: {
     type: String,
     default: 'user',
-    enum: ['user', 'admin']
+    enum: ['user', 'admin', 'teacher']
   },
   refreshTokens: [{
     token: { type: String, required: true },
@@ -35,6 +36,14 @@ const userSchema = new Schema({
     type: Date, 
     default: Date.now 
   }
+});
+
+// Хеширование пароля перед сохранением
+userSchema.pre('save', async function (next) {
+  if (this.isModified('password')) {
+    this.password = await bcrypt.hash(this.password, 10);
+  }
+  next();
 });
 
 module.exports = mongoose.model('User', userSchema);

@@ -4,7 +4,10 @@ const cors = require('cors');
 const config = require('./config/config');
 const userRoutes = require('./routes/userRoutes');
 const studentRoutes = require('./routes/studentRoutes');
+const eventRoutes = require('./routes/eventRoutes');
+const teachersRoutes = require('./routes/teachersRoutes');
 const { createUploadsFolder } = require('./utils/fileUtils');
+
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -32,6 +35,8 @@ mongoose.connect(config.mongoURI, {
 // Маршруты
 app.use('/api/auth', userRoutes);
 app.use('/api/students', studentRoutes);
+app.use('/api/events', eventRoutes);
+app.use('/api', teachersRoutes);
 
 // Обработка ошибок
 app.use((err, req, res, next) => {
