@@ -8,6 +8,8 @@ const studentRoutes = require('./routes/studentRoutes');
 const eventRoutes = require('./routes/eventRoutes');
 const teachersRoutes = require('./routes/teachersRoutes');
 const { createUploadsFolder } = require('./utils/fileUtils');
+const studentsRoutes = require('./routes/student');
+const awardRoutes = require('./routes/AwardRoutes');
 
 
 const app = express();
@@ -38,6 +40,8 @@ app.use('/api/auth', userRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api', teachersRoutes);
+app.use('/api', studentsRoutes);
+app.use('/api/awards', awardRoutes);
 
 // Обработка ошибок
 app.use((err, req, res, next) => {

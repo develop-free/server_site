@@ -1,8 +1,8 @@
+const mongoose = require('mongoose');
 const Event = require('../models/Event');
 const Student = require('../models/Student');
 const Teacher = require('../models/Teacher');
 const Level = require('../models/Level');
-const mongoose = require('mongoose');
 
 exports.getAllEvents = async (req, res) => {
   try {
@@ -12,7 +12,8 @@ exports.getAllEvents = async (req, res) => {
       .populate('level', 'levelName');
     res.json(events);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('Error in getAllEvents:', err);
+    res.status(500).json({ message: 'Ошибка сервера при получении мероприятий' });
   }
 };
 
@@ -24,7 +25,7 @@ exports.createEvent = async (req, res) => {
   }
 
   try {
-    // Проверка существования студентов
+    // Validate students
     if (students.length > 0) {
       const existingStudents = await Student.countDocuments({ _id: { $in: students } });
       if (existingStudents !== students.length) {
@@ -32,20 +33,24 @@ exports.createEvent = async (req, res) => {
       }
     }
 
-    // Проверка преподавателя
-    if (teacher) {
+    // Validate teacher
+    let teacherId = null;
+    if (teacher && teacher !== '') {
       const teacherExists = await Teacher.exists({ _id: teacher });
       if (!teacherExists) {
         return res.status(400).json({ message: 'Преподаватель не найден' });
       }
+      teacherId = teacher;
     }
 
-    // Проверка уровня
-    if (level) {
+    // Validate level
+    let levelId = null;
+    if (level && level !== '') {
       const levelExists = await Level.exists({ _id: level });
       if (!levelExists) {
         return res.status(400).json({ message: 'Уровень не найден' });
       }
+      levelId = level;
     }
 
     const event = new Event({
@@ -53,8 +58,8 @@ exports.createEvent = async (req, res) => {
       title,
       dateTime: new Date(dateTime),
       students,
-      teacher,
-      level
+      teacher: teacherId,
+      level: levelId
     });
 
     const savedEvent = await event.save();
@@ -65,7 +70,8 @@ exports.createEvent = async (req, res) => {
 
     res.status(201).json(populatedEvent);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    console.error('Error in createEvent:', err);
+    res.status(400).json({ message: err.message || 'Ошибка при создании мероприятия' });
   }
 };
 
@@ -82,13 +88,13 @@ exports.updateEvent = async (req, res) => {
   }
 
   try {
-    // Проверка существования мероприятия
+    // Check if event exists
     const eventExists = await Event.exists({ _id: id });
     if (!eventExists) {
       return res.status(404).json({ message: 'Мероприятие не найдено' });
     }
 
-    // Проверка существования студентов
+    // Validate students
     if (students.length > 0) {
       const existingStudents = await Student.countDocuments({ _id: { $in: students } });
       if (existingStudents !== students.length) {
@@ -96,20 +102,24 @@ exports.updateEvent = async (req, res) => {
       }
     }
 
-    // Проверка преподавателя
-    if (teacher) {
+    // Validate teacher
+    let teacherId = null;
+    if (teacher && teacher !== '') {
       const teacherExists = await Teacher.exists({ _id: teacher });
       if (!teacherExists) {
         return res.status(400).json({ message: 'Преподаватель не найден' });
       }
+      teacherId = teacher;
     }
 
-    // Проверка уровня
-    if (level) {
+    // Validate level
+    let levelId = null;
+    if (level && level !== '') {
       const levelExists = await Level.exists({ _id: level });
       if (!levelExists) {
         return res.status(400).json({ message: 'Уровень не найден' });
       }
+      levelId = level;
     }
 
     const updatedEvent = await Event.findByIdAndUpdate(
@@ -119,18 +129,23 @@ exports.updateEvent = async (req, res) => {
         title,
         dateTime: new Date(dateTime),
         students,
-        teacher,
-        level
+        teacher: teacherId,
+        level: levelId
       },
       { new: true }
     )
-    .populate('students', 'first_name last_name')
-    .populate('teacher', 'first_name last_name')
-    .populate('level', 'levelName');
+      .populate('students', 'first_name last_name')
+      .populate('teacher', 'first_name last_name')
+      .populate('level', 'levelName');
+
+    if (!updatedEvent) {
+      return res.status(404).json({ message: 'Мероприятие не найдено' });
+    }
 
     res.json(updatedEvent);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    console.error('Error in updateEvent:', err);
+    res.status(400).json({ message: err.message || 'Ошибка при обновлении мероприятия' });
   }
 };
 
@@ -148,6 +163,7 @@ exports.deleteEvent = async (req, res) => {
     }
     res.json({ message: 'Мероприятие удалено' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('Error in deleteEvent:', err);
+    res.status(500).json({ message: 'Ошибка сервера при удалении мероприятия' });
   }
 };
