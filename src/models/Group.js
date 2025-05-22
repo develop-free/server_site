@@ -10,10 +10,6 @@ const GroupSchema = new mongoose.Schema({
     ref: 'Department',
     required: true,
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
 });
 
 module.exports = mongoose.model('Group', GroupSchema);

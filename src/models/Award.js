@@ -4,36 +4,45 @@ const AwardSchema = new mongoose.Schema({
   studentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Student',
-    required: [true, 'Идентификатор студента обязателен'],
+    required: true,
   },
   departmentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Department',
-    required: [true, 'Идентификатор отделения обязателен'],
+    required: true,
   },
   groupId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Group',
-    required: [true, 'Идентификатор группы обязателен'],
+    required: true,
   },
   eventName: {
     type: String,
-    required: [true, 'Название мероприятия обязательно'],
+    required: true,
     trim: true,
   },
   awardType: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'AwardType',
-    required: [true, 'Тип награды обязателен'],
+    required: true,
   },
   awardDegree: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'AwardDegree',
-    required: [true, 'Степень награды обязательна'],
+  },
+  level: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Level',
+    required: true,
   },
   filePath: {
     type: String,
-    required: [true, 'Путь к файлу обязателен'],
+    required: false,
+  },
+  teacherId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Teacher',
+    required: true,
   },
 });
 
